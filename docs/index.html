@@ -1,0 +1,232 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="./"><head><link rel="icon" type="image/x-icon" href="https://cdn.jsdelivr.net/gh/harnumaix/donate@main/assets/favicon.ico?v=1" /><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>ths-csprng</title><meta name="description" content="Documentation for ths-csprng"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="assets/style.css"/><link rel="stylesheet" href="assets/highlight.css"/><script defer src="assets/main.js"></script><script async src="assets/icons.js" id="tsd-icons-script"></script><script async src="assets/search.js" id="tsd-search-script"></script><script async src="assets/navigation.js" id="tsd-nav-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar"><div class="tsd-toolbar-contents container"><a href="index.html" class="title">ths-csprng</a><div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/><ul role="listbox" id="tsd-search-results"></ul><div id="tsd-search-status" aria-live="polite" aria-atomic="true"><div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-menu"></use></svg></a></div></header><div class="container container-main"><div class="col-content"><div class="tsd-page-title"><h1>ths-csprng</h1></div><div class="tsd-panel tsd-typography"><div align="center">
+<img src="https://raw.githubusercontent.com/harnumaix/temporal-hardening-solution-csprng/refs/heads/main/media/banner.png" alt="Banner" width="1250">
+</div>
+<br />
+<h1 id="ths-csprng" class="tsd-anchor-link">ths-csprng<a href="#ths-csprng" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<p><a href="https://www.npmjs.com/package/ths-csprng"><img src="https://img.shields.io/npm/v/ths-csprng.svg" alt="npm version"></a>
+<img src="https://img.shields.io/badge/Node.js-%3E%3D24.7.0-green" alt="Node.js">
+<a href="https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+<img src="https://github.com/harnumaix/temporal-hardening-solution-csprng/actions/workflows/verify.yml/badge.svg" alt="Verify Status">
+<a href="https://badge.socket.dev/npm/package/ths-csprng/2.0.1"><img src="https://badge.socket.dev/npm/package/ths-csprng/2.0.1" alt="Socket Badge"></a>
+<a href="https://harnumaix.github.io/donate/"><img src="https://img.shields.io/badge/@HarnumaIX-Donate-FF4D4D" alt="Donate"></a></p>
+<br />
+<p>Standard CSPRNGs assume that once a seed is generated, the history of how it was produced is irrelevant. In practice that assumption breaks down in documented, real-world ways — backdoored hardware RNGs, hypervisor entropy starvation, forked process state reuse, and OS-level DRBG compromises have all produced exploitable key material in production systems.</p>
+<p><strong>THS (Temporal Hardening Solution)</strong> is a multi-source CSPRNG wrapper built around the idea that no single entropy source should be trusted unconditionally. It derives randomness by observing a <strong>sequential movie of system state</strong> — CPU jitter, scheduler noise, GC pressure, and OS bytes — across many frames, mixing everything into a KMAC256 accumulator and optionally memory-hardening early frames with native <code>crypto.argon2id</code>. The result is a seed whose reconstruction requires an attacker to accurately simulate the full physical evolution of the machine across every frame, not just recover a single snapshot.</p>
+<br />
+<hr>
+<br />
+<div align="center">
+<img src="https://raw.githubusercontent.com/harnumaix/temporal-hardening-solution-csprng/refs/heads/main/media/illustration_1.png" alt="Illustration 1" width="1250">
+</div>
+<br />
+<h2 id="the-real-world-threat-model" class="tsd-anchor-link">The Real-World Threat Model<a href="#the-real-world-threat-model" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>THS was designed around concrete, documented attack scenarios — not academic abstractions.</p>
+<ul>
+<li>
+<p><strong>Backdoored hardware RNG (RDRAND / Dual_EC_DRBG).</strong> Early Intel Ivy Bridge errata produced biased RDRAND output. The NSA-influenced Dual_EC_DRBG, standardised in <a href="https://csrc.nist.rip/publications/nistpubs/800-90A/SP800-90A.pdf">NIST SP 800-90A</a> and shipped in RSA BSAFE and several TLS stacks, contained a deliberately chosen curve point that let its designer predict all future output from 32 bytes of observation. THS never forwards OS CSPRNG output directly — every byte is mixed through SHA3-512 with timing-derived entropy the DRBG cannot observe, and optionally stretched with argon2id.</p>
+</li>
+<li>
+<p><strong>VM / hypervisor entropy starvation.</strong> Virtualised environments (AWS EC2, GCP, Azure, Docker) frequently boot with a near-empty kernel entropy pool because the guest OS has no access to physical hardware noise. The 2012 landmark paper <a href="https://factorable.net/paper.html">“Mining Your Ps and Qs”</a> found tens of thousands of colliding RSA moduli from internet-wide key scans — a direct consequence of early-boot key generation in exactly these environments. THS compensates by harvesting CPU jitter, scheduler noise, GC pressure, and context-switch counters — sources that are genuinely unpredictable even in a VM, even when the kernel pool is nearly empty.</p>
+</li>
+<li>
+<p><strong>Forked process state reuse.</strong> <code>fork()</code> duplicates the entire process address space, including any in-memory PRNG state. Two forked children starting from the same state produce identical byte streams. This famously affected OpenSSL in Debian via <a href="https://www.cs.utexas.edu/~hovav/dist/debiankey.pdf">CVE-2008-0166</a> and has been rediscovered in Python, Ruby, and Go runtimes. THS re-seeds from fresh OS entropy at the start of <strong>every</strong> <code>random()</code> call, not just at initialisation. A forked child diverges immediately on its first call.</p>
+</li>
+<li>
+<p><strong>Forward-secrecy compromise.</strong> After each <code>random()</code> call, the internal entropy storage is ratcheted forward with post-output frames generated <em>after</em> the output was committed. An adversary who captures the output cannot derive the next seed without also knowing scheduler events, OS reads, and hrtime values that had not yet occurred when the output was produced.</p>
+</li>
+</ul>
+<br />
+<blockquote>
+<p>📖 <strong>Documentation:</strong> Full API breakdowns, edge cases, and advanced configurations are available at <strong><a href="https://harnumaix.github.io/temporal-hardening-solution-csprng/">harnumaix.github.io/temporal-hardening-solution-csprng</a></strong>.</p>
+</blockquote>
+<blockquote>
+<p>📦 <strong>Full API context optimized for AI assistants and contributors</strong> is available in <a href="https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/llms-full.txt"><code>llms-full.txt</code></a>.</p>
+</blockquote>
+<br />
+<br />
+<hr>
+<br />
+<h2 id="🚀-getting-started" class="tsd-anchor-link">🚀 Getting Started<a href="#🚀-getting-started" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code class="bash"><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">install</span><span class="hl-1"> </span><span class="hl-2">ths-csprng</span>
+</code><button type="button">Copy</button></pre>
+
+<blockquote>
+<p><strong>Requires Node.js ≥ 24.7.0.</strong></p>
+</blockquote>
+<br />
+<hr>
+<h2 id="🛠️-quick-start" class="tsd-anchor-link">🛠️ Quick Start<a href="#🛠️-quick-start" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="modern-esm-nodejs-24-bun" class="tsd-anchor-link">Modern ESM (Node.js 24+, Bun)<a href="#modern-esm-nodejs-24-bun" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="javascript"><span class="hl-3">import</span><span class="hl-1"> </span><span class="hl-4">THS</span><span class="hl-1"> </span><span class="hl-3">from</span><span class="hl-1"> </span><span class="hl-2">&#39;ths-csprng&#39;</span><span class="hl-1">;</span><br/><br/><span class="hl-5">// Standard 256-bit secure random buffer (Level 2, 64 frames)</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">entropy</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">random</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">);</span><br/><br/><span class="hl-5">// Long-term master key with maximum hardening</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">masterKey</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">random</span><span class="hl-1">(</span><span class="hl-8">64</span><span class="hl-1">, {</span><br/><span class="hl-1">    </span><span class="hl-4">layers:</span><span class="hl-1">          </span><span class="hl-8">512</span><span class="hl-1">,          </span><span class="hl-5">// 512 sequential entropy frames</span><br/><span class="hl-1">    </span><span class="hl-4">harden:</span><span class="hl-1">          </span><span class="hl-8">3</span><span class="hl-1">,            </span><span class="hl-5">// Level 3: SHA3-512 + native argon2id</span><br/><span class="hl-1">    </span><span class="hl-4">mem:</span><span class="hl-1">             </span><span class="hl-8">65536</span><span class="hl-1">,        </span><span class="hl-5">// 64 MiB argon2id memory cost</span><br/><span class="hl-1">    </span><span class="hl-4">memoryH:</span><span class="hl-1">         </span><span class="hl-8">4</span><span class="hl-1">,            </span><span class="hl-5">// Apply argon2id to the first 4 frames</span><br/><span class="hl-1">    </span><span class="hl-4">trng:</span><span class="hl-1">            </span><span class="hl-6">true</span><span class="hl-1">,         </span><span class="hl-5">// Read directly from /dev/urandom</span><br/><span class="hl-1">    </span><span class="hl-4">sandwichMode:</span><span class="hl-1">    </span><span class="hl-6">true</span><span class="hl-1">,         </span><span class="hl-5">// Ratchet entropy storage forward post-output</span><br/><span class="hl-1">    </span><span class="hl-4">maxSandwichCount:</span><span class="hl-1"> </span><span class="hl-8">5</span><span class="hl-1">,           </span><span class="hl-5">// 5 post-output frames for forward secrecy</span><br/><span class="hl-1">    </span><span class="hl-4">label:</span><span class="hl-1">           </span><span class="hl-2">&#39;myapp:master-key-v1&#39;</span><span class="hl-1">,  </span><span class="hl-5">// Domain-separation label</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<h3 id="commonjs" class="tsd-anchor-link">CommonJS<a href="#commonjs" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="javascript"><span class="hl-6">const</span><span class="hl-1"> { </span><span class="hl-7">THS</span><span class="hl-1"> } = </span><span class="hl-0">require</span><span class="hl-1">(</span><span class="hl-2">&#39;ths-csprng&#39;</span><span class="hl-1">);</span><br/><br/><span class="hl-1">(</span><span class="hl-6">async</span><span class="hl-1"> () </span><span class="hl-6">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">entropy</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">random</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-4">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-4">entropy</span><span class="hl-1">.</span><span class="hl-0">toString</span><span class="hl-1">(</span><span class="hl-2">&#39;hex&#39;</span><span class="hl-1">));</span><br/><span class="hl-1">})();</span>
+</code><button type="button">Copy</button></pre>
+
+<br />
+<hr>
+<h2 id="💎-hardening-levels" class="tsd-anchor-link">💎 Hardening Levels<a href="#💎-hardening-levels" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Level</th>
+<th style="text-align:left">Mode</th>
+<th style="text-align:left">What it captures</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>0</strong></td>
+<td style="text-align:left"><strong>Benchmark only</strong></td>
+<td style="text-align:left">A single <code>process.hrtime.bigint()</code> sample. No OS reads, no entropy mixing. <strong>Do not use in production.</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>1</strong></td>
+<td style="text-align:left"><strong>Process metrics</strong></td>
+<td style="text-align:left">17 process metrics: nanosecond hrtime, uptime, user/system CPU time, minor/major page faults, voluntary/involuntary context switches, V8 heap (used/total/external/arrayBuffers), RSS, <code>performance.now()</code>, the module-load anchor, wall-clock time, and the frame index. No OS reads.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>2</strong></td>
+<td style="text-align:left"><strong>OS-mixed</strong> <em>(recommended default)</em></td>
+<td style="text-align:left">Level 1 metrics + 128 bytes of fresh OS entropy per frame, all hashed through SHA3-512. A second hrtime sample brackets the OS read, encoding syscall latency as entropy. Effective even in VMs with a stale kernel pool.</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>3</strong></td>
+<td style="text-align:left"><strong>Memory-hardened</strong></td>
+<td style="text-align:left">Level 2 + native <code>crypto.argon2id</code> on frames with index <code>&lt; memoryH</code>. Each brute-force candidate requires <code>mem</code> KiB of RAM — GPU farms are bottlenecked by memory bandwidth, not compute. Gate with a small <code>memoryH</code> to limit latency impact.</td>
+</tr>
+</tbody>
+</table>
+<br />
+<hr>
+<h2 id="⚙️-full-configuration-options" class="tsd-anchor-link">⚙️ Full Configuration Options<a href="#⚙️-full-configuration-options" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code class="javascript"><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">bytes</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">random</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">, {</span><br/><span class="hl-1">    </span><span class="hl-5">// ── Core ────────────────────────────────────────────────────────────────</span><br/><span class="hl-1">    </span><span class="hl-4">layers:</span><span class="hl-1">           </span><span class="hl-8">64</span><span class="hl-1">,          </span><span class="hl-5">// Sequential entropy frames (2–32768)</span><br/><span class="hl-1">    </span><span class="hl-4">harden:</span><span class="hl-1">           </span><span class="hl-8">2</span><span class="hl-1">,           </span><span class="hl-5">// Snapshot hardening level (0–3)</span><br/><span class="hl-1">    </span><span class="hl-4">trng:</span><span class="hl-1">             </span><span class="hl-6">false</span><span class="hl-1">,       </span><span class="hl-5">// Read OS bytes from /dev/urandom directly</span><br/><span class="hl-1">    </span><span class="hl-4">buffer:</span><span class="hl-1">           </span><span class="hl-6">true</span><span class="hl-1">,        </span><span class="hl-5">// true → Buffer, false → Uint8Array</span><br/><br/><span class="hl-1">    </span><span class="hl-5">// ── Forward Secrecy (Sandwich Mode) ─────────────────────────────────────</span><br/><span class="hl-1">    </span><span class="hl-4">sandwichMode:</span><span class="hl-1">     </span><span class="hl-6">true</span><span class="hl-1">,        </span><span class="hl-5">// Ratchet entropy storage with post-output frames</span><br/><span class="hl-1">    </span><span class="hl-4">maxSandwichCount:</span><span class="hl-1"> </span><span class="hl-8">3</span><span class="hl-1">,           </span><span class="hl-5">// Post-output frames to fold in (1–32768)</span><br/><br/><span class="hl-1">    </span><span class="hl-5">// ── Argon2id (harden: 3 only) ────────────────────────────────────────────</span><br/><span class="hl-1">    </span><span class="hl-4">memoryH:</span><span class="hl-1">          </span><span class="hl-8">1</span><span class="hl-1">,           </span><span class="hl-5">// Frame indices [0, memoryH) receive argon2id</span><br/><span class="hl-1">    </span><span class="hl-4">mem:</span><span class="hl-1">              </span><span class="hl-8">16384</span><span class="hl-1">,       </span><span class="hl-5">// memoryCost in KiB (≥ 1024; default 16 MiB)</span><br/><span class="hl-1">    </span><span class="hl-4">passes:</span><span class="hl-1">           </span><span class="hl-8">3</span><span class="hl-1">,           </span><span class="hl-5">// timeCost / iteration count</span><br/><span class="hl-1">    </span><span class="hl-4">parallelism:</span><span class="hl-1">      </span><span class="hl-8">4</span><span class="hl-1">,           </span><span class="hl-5">// Degree of parallelism</span><br/><br/><span class="hl-1">    </span><span class="hl-5">// ── Domain Separation ────────────────────────────────────────────────────</span><br/><span class="hl-1">    </span><span class="hl-4">label:</span><span class="hl-1">            </span><span class="hl-2">&#39;THS-v2&#39;</span><span class="hl-1">,    </span><span class="hl-5">// KMAC256 personalisation string; change per key type</span><br/><span class="hl-1">});</span>
+</code><button type="button">Copy</button></pre>
+
+<br />
+<hr>
+<h2 id="🧬-advanced-api" class="tsd-anchor-link">🧬 Advanced API<a href="#🧬-advanced-api" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h3 id="streaming-frames" class="tsd-anchor-link">Streaming Frames<a href="#streaming-frames" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>streamFrames</code> yields a continuous stream of hardened random frames without pre-committing to a fixed layer count. Each <code>yield</code> is an async suspension point that introduces real scheduler-driven jitter. The seed is ratcheted forward using both the emitted bytes <em>and</em> the hrtime at which the consumer resumed the generator — future output depends on when prior output was consumed.</p>
+<p>The stream maintains its own seed, entirely separate from the cross-call entropy storage used by <code>random()</code>. Streaming and non-streaming uses cannot interfere with each other's forward-secrecy properties.</p>
+<pre><code class="javascript"><span class="hl-3">import</span><span class="hl-1"> </span><span class="hl-4">THS</span><span class="hl-1"> </span><span class="hl-3">from</span><span class="hl-1"> </span><span class="hl-2">&#39;ths-csprng&#39;</span><span class="hl-1">;</span><br/><br/><span class="hl-6">let</span><span class="hl-1"> </span><span class="hl-4">count</span><span class="hl-1"> = </span><span class="hl-8">0</span><span class="hl-1">;</span><br/><span class="hl-3">for</span><span class="hl-1"> </span><span class="hl-3">await</span><span class="hl-1"> (</span><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">frame</span><span class="hl-1"> </span><span class="hl-6">of</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">streamFrames</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">, { </span><span class="hl-4">harden:</span><span class="hl-1"> </span><span class="hl-8">2</span><span class="hl-1">, </span><span class="hl-4">label:</span><span class="hl-1"> </span><span class="hl-2">&#39;myapp:session-tokens&#39;</span><span class="hl-1"> })) {</span><br/><span class="hl-1">    </span><span class="hl-0">issueSessionToken</span><span class="hl-1">(</span><span class="hl-4">frame</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-3">if</span><span class="hl-1"> (++</span><span class="hl-4">count</span><span class="hl-1"> &gt;= </span><span class="hl-8">1000</span><span class="hl-1">) </span><span class="hl-3">break</span><span class="hl-1">;  </span><span class="hl-5">// generator runs indefinitely until stopped</span><br/><span class="hl-1">}</span>
+</code><button type="button">Copy</button></pre>
+
+<p><code>streamFrames</code> accepts the same entropy options as <code>random()</code> (<code>harden</code>, <code>memoryH</code>, <code>mem</code>, <code>passes</code>, <code>parallelism</code>, <code>trng</code>, <code>label</code>).</p>
+<br />
+<h3 id="drop-in-replacement" class="tsd-anchor-link"><code>randomBytes</code> Drop-in Replacement<a href="#drop-in-replacement" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="javascript"><span class="hl-3">import</span><span class="hl-1"> { </span><span class="hl-4">randomBytes</span><span class="hl-1"> } </span><span class="hl-3">from</span><span class="hl-1"> </span><span class="hl-2">&#39;ths-csprng&#39;</span><span class="hl-1">;</span><br/><br/><span class="hl-5">// Synchronous — WebCrypto getRandomValues, no THS overhead</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">nonce</span><span class="hl-1"> = </span><span class="hl-0">randomBytes</span><span class="hl-1">(</span><span class="hl-8">16</span><span class="hl-1">);                         </span><span class="hl-5">// → Uint8Array</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">buf</span><span class="hl-1">   = </span><span class="hl-4">Buffer</span><span class="hl-1">.</span><span class="hl-0">from</span><span class="hl-1">(</span><span class="hl-0">randomBytes</span><span class="hl-1">(</span><span class="hl-8">16</span><span class="hl-1">));            </span><span class="hl-5">// safely wrapped</span><br/><br/><span class="hl-5">// Asynchronous — full THS sequential frame movie</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">key</span><span class="hl-1">   = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-0">randomBytes</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">, </span><span class="hl-6">true</span><span class="hl-1">);             </span><span class="hl-5">// isHardenRNG=true</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">key2</span><span class="hl-1">  = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-0">randomBytes</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">, </span><span class="hl-6">true</span><span class="hl-1">, { </span><span class="hl-4">harden:</span><span class="hl-1"> </span><span class="hl-8">3</span><span class="hl-1">, </span><span class="hl-4">mem:</span><span class="hl-1"> </span><span class="hl-8">32768</span><span class="hl-1"> });</span>
+</code><button type="button">Copy</button></pre>
+
+<br />
+<h3 id="convenience-aliases" class="tsd-anchor-link">Convenience Aliases<a href="#convenience-aliases" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="javascript"><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">rand</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">);          </span><span class="hl-5">// alias for THS.random()</span><br/><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">rnd</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">);           </span><span class="hl-5">// alias for THS.random()</span>
+</code><button type="button">Copy</button></pre>
+
+<br />
+<h3 id="raw-os-entropy" class="tsd-anchor-link">Raw OS Entropy<a href="#raw-os-entropy" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="javascript"><span class="hl-5">// Raw OS bytes with no THS mixing.</span><br/><span class="hl-5">// Caller is responsible for zeroing the buffer when done.</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">seed</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">raw</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">);          </span><span class="hl-5">// /dev/urandom (default: trng=true)</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">seed2</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">raw</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">, </span><span class="hl-6">false</span><span class="hl-1">);  </span><span class="hl-5">// crypto.randomBytes</span>
+</code><button type="button">Copy</button></pre>
+
+<br />
+<h3 id="synchronous-webcrypto-fill" class="tsd-anchor-link">Synchronous WebCrypto Fill<a href="#synchronous-webcrypto-fill" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<pre><code class="javascript"><span class="hl-5">// Routes to window.crypto in browsers, node:crypto webcrypto in Node.js.</span><br/><span class="hl-5">// No THS mixing — use when synchronous operation is required.</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">u32</span><span class="hl-1"> = </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">fillRandom</span><span class="hl-1">(</span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">Uint32Array</span><span class="hl-1">(</span><span class="hl-8">8</span><span class="hl-1">));</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">u8</span><span class="hl-1">  = </span><span class="hl-7">THS</span><span class="hl-1">.</span><span class="hl-0">fillRandom</span><span class="hl-1">(</span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">Uint8Array</span><span class="hl-1">(</span><span class="hl-8">32</span><span class="hl-1">));</span>
+</code><button type="button">Copy</button></pre>
+
+<br />
+<hr>
+<br />
+<div align="center">
+<img src="https://raw.githubusercontent.com/harnumaix/temporal-hardening-solution-csprng/refs/heads/main/media/illustration_2.png" alt="Illustration 2" width="1250">
+</div>
+<br />
+<h2 id="🔬-design-the-sequential-movie" class="tsd-anchor-link">🔬 Design: The Sequential Movie<a href="#🔬-design-the-sequential-movie" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>Entropy is derived by observing a <strong>sequential movie of system state</strong>, not a single snapshot:</p>
+<pre><code><span class="hl-4">seed</span><span class="hl-1"> ──► </span><span class="hl-4">frame</span><span class="hl-1">₀ ──► </span><span class="hl-4">jitter</span><span class="hl-1"> ──► </span><span class="hl-4">frame</span><span class="hl-1">₁ ──► </span><span class="hl-4">jitter</span><span class="hl-1"> ──► … ──► </span><span class="hl-4">frameₙ</span><br/><span class="hl-1">              ↓                     ↓                     ↓</span><br/><span class="hl-1">          </span><span class="hl-7">KMAC256</span><span class="hl-1"> </span><span class="hl-4">update</span><span class="hl-1"> </span><span class="hl-4">per</span><span class="hl-1"> </span><span class="hl-4">frame</span><span class="hl-1">, </span><span class="hl-4">interleaved</span><span class="hl-1"> </span><span class="hl-3">with</span><span class="hl-1"> </span><span class="hl-7">OS</span><span class="hl-1"> </span><span class="hl-4">bytes</span>
+</code><button>Copy</button></pre>
+
+<p>Each frame captures a unique time-slice of CPU jitter, scheduler noise, memory pressure, and GC artifacts. The frame loop is always sequential — never <code>Promise.all</code> — so the inter-frame timing spread is preserved as entropy. Concurrent scheduling would collapse the movie into a near-simultaneous snapshot, discarding the temporal structure entirely.</p>
+<p>The cross-call <strong>entropy storage</strong> carries entropy across invocations. It is re-mixed with fresh OS bytes at the start of every <code>random()</code> call (preventing it from becoming a closed, self-referential loop) and ratcheted forward with post-output frames after each call (forward secrecy).</p>
+<br />
+<hr>
+<h2 id="use-cases" class="tsd-anchor-link">Use Cases<a href="#use-cases" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Use case</th>
+<th style="text-align:left">Recommended call</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Nonces, IVs, UUIDs, session tokens</td>
+<td style="text-align:left"><code>randomBytes(len)</code> or <code>THS.fillRandom(arr)</code> — synchronous, zero overhead</td>
+</tr>
+<tr>
+<td style="text-align:left">Application-layer session keys</td>
+<td style="text-align:left"><code>THS.random(32)</code> — default options (Level 2, 64 frames)</td>
+</tr>
+<tr>
+<td style="text-align:left">Long-lived master keys / signing keys</td>
+<td style="text-align:left"><code>THS.random(64, { harden: 3, mem: 65536, layers: 256 })</code></td>
+</tr>
+<tr>
+<td style="text-align:left">High-volume token streams</td>
+<td style="text-align:left"><code>THS.streamFrames(32)</code> — continuous, forward-secret, per-frame ratchet</td>
+</tr>
+<tr>
+<td style="text-align:left">Bootstrapping a separate DRBG</td>
+<td style="text-align:left"><code>THS.raw(64)</code> — raw OS bytes, caller manages mixing</td>
+</tr>
+<tr>
+<td style="text-align:left">Browser / WebCrypto contexts</td>
+<td style="text-align:left"><code>THS.fillRandom(new Uint8Array(n))</code> — routes to <code>window.crypto</code></td>
+</tr>
+</tbody>
+</table>
+<br />
+<hr>
+<div class="tsd-alert tsd-alert-note"><div class="tsd-alert-title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><use href="assets/icons.svg#icon-alertNote"></use></svg><span>Note</span></div><p></p>
+<p><strong>Hardening Level 3</strong> is computationally expensive by design. It is intended for long-term master keys or seeds where latency is acceptable and the threat model includes state-level adversaries. For high-frequency generation (UUIDs, nonces, IVs), use <strong>Level 0</strong> or <strong>Level 1</strong>, or the synchronous <code>randomBytes</code> / <code>fillRandom</code> path.</p>
+</div>
+<br />
+<hr>
+<h2 id="🛠️-development-verification" class="tsd-anchor-link">🛠️ Development &amp; Verification<a href="#🛠️-development-verification" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<pre><code class="bash"><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">check</span><span class="hl-1">        </span><span class="hl-5"># test + verify checksums</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">build</span><span class="hl-1">        </span><span class="hl-5"># minify + generate docs + checksums</span><br/><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">test</span>
+</code><button type="button">Copy</button></pre>
+
+<p>The project uses:</p>
+<ul>
+<li><code>terser</code> for minification</li>
+<li>SHA-256 checksums for all built files</li>
+<li><a href="https://npmjs.com/package/@noble/hashes"><code>@noble/hashes</code></a> for KMAC256 (audited, zero-dependency)</li>
+<li>Native <code>node:crypto</code> argon2id (Node.js 24+)</li>
+<li>Strict mode + comprehensive test suite</li>
+</ul>
+<br />
+<hr>
+<br />
+<h2 id="⭐-contributors" class="tsd-anchor-link">⭐ Contributor(s)<a href="#⭐-contributors" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<a href="https://github.com/harnumaix/temporal-hardening-solution-csprng/graphs/contributors">
+  <img alt="contributors" src="https://contrib.rocks/image?repo=harnumaix/temporal-hardening-solution-csprng"/>
+</a>
+<br />
+<br />
+<br />
+<h2 id="license" class="tsd-anchor-link">License<a href="#license" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>Licensed under the <strong>Apache License, Version 2.0</strong> — a permissive license with an explicit grant of patent rights and protection against contributor liability.</p>
+<p>Copyright © 2026 Aries Harbinger. See the <strong><a href="https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/LICENSE">LICENSE</a></strong> file for full details.</p>
+<br />
+<br />
+<h2 id="🔗-links" class="tsd-anchor-link">🔗 Links<a href="#🔗-links" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<ul>
+<li><a href="https://github.com/harnumaix/temporal-hardening-solution-csprng">GitHub Repository</a></li>
+<li><a href="https://www.npmjs.com/package/ths-csprng">npm Package</a></li>
+<li>Full AI Context <strong><a href="https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/llms-full.txt">llms-full.txt</a></strong></li>
+<li>Full API Documentations <strong><a href="https://harnumaix.github.io/temporal-hardening-solution-csprng/">harnumaix.github.io/temporal-hardening-solution-csprng</a></strong></li>
+</ul>
+<br />
+<br />
+<br />
+<br /></div></div><div class="col-sidebar"><div class="page-menu"><div class="tsd-navigation settings"><details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg><h3>Settings</h3></summary><div class="tsd-accordion-details"><div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span><ul id="tsd-filter-options"><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div><div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div><details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg><h3>On This Page</h3></summary><div class="tsd-accordion-details"><a href="#ths-csprng"><span>ths-<wbr/>csprng</span></a><ul><li><a href="#the-real-world-threat-model"><span>The <wbr/>Real-<wbr/>World <wbr/>Threat <wbr/>Model</span></a></li><li><a href="#🚀-getting-started"><span>🚀 <wbr/>Getting <wbr/>Started</span></a></li><li><a href="#🛠️-quick-start"><span>🛠️ <wbr/>Quick <wbr/>Start</span></a></li><li><ul><li><a href="#modern-esm-nodejs-24-bun"><span>Modern <wbr/>ESM (<wbr/>Node.js 24+, <wbr/>Bun)</span></a></li><li><a href="#commonjs"><span>Common<wbr/>JS</span></a></li></ul></li><li><a href="#💎-hardening-levels"><span>💎 <wbr/>Hardening <wbr/>Levels</span></a></li><li><a href="#⚙️-full-configuration-options"><span>⚙️ <wbr/>Full <wbr/>Configuration <wbr/>Options</span></a></li><li><a href="#🧬-advanced-api"><span>🧬 <wbr/>Advanced <wbr/>API</span></a></li><li><ul><li><a href="#streaming-frames"><span>Streaming <wbr/>Frames</span></a></li><li><a href="#drop-in-replacement"><span> <wbr/>Drop-<wbr/>in <wbr/>Replacement</span></a></li><li><a href="#convenience-aliases"><span>Convenience <wbr/>Aliases</span></a></li><li><a href="#raw-os-entropy"><span>Raw <wbr/>OS <wbr/>Entropy</span></a></li><li><a href="#synchronous-webcrypto-fill"><span>Synchronous <wbr/>Web<wbr/>Crypto <wbr/>Fill</span></a></li></ul></li><li><a href="#🔬-design-the-sequential-movie"><span>🔬 <wbr/>Design: <wbr/>The <wbr/>Sequential <wbr/>Movie</span></a></li><li><a href="#use-cases"><span>Use <wbr/>Cases</span></a></li><li><a href="#🛠️-development-verification"><span>🛠️ <wbr/>Development &amp; <wbr/>Verification</span></a></li><li><a href="#⭐-contributors"><span>⭐ <wbr/>Contributor(s)</span></a></li><li><a href="#license"><span>License</span></a></li><li><a href="#🔗-links"><span>🔗 <wbr/>Links</span></a></li></ul></div></details></div><div class="site-menu"><nav class="tsd-navigation"><a href="modules.html">ths-csprng</a><ul class="tsd-small-nested-navigation" id="tsd-nav-container"><li>Loading...</li></ul></nav></div></div></div><footer></footer><div class="overlay"></div></body></html>

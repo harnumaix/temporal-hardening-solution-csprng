@@ -1,0 +1,74 @@
+{
+  "name": "ths-csprng",
+  "version": "2.0.1",
+  "description": "Temporal Hardening Solution: a multi-source CSPRNG wrapper that remains secure when individual entropy sources are compromised, backdoored, or actively hostile.",
+  "author": "Aries Harbinger",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/harnumaix/temporal-hardening-solution-csprng#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harnumaix/temporal-hardening-solution-csprng.git"
+  },
+  "funding": [
+    {
+      "type": "individual",
+      "url": "https://harnumaix.github.io/donate/"
+    }
+  ],
+  "bugs": {
+    "url": "https://github.com/harnumaix/temporal-hardening-solution-csprng/issues"
+  },
+  "type": "module",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./dist/index.min.js",
+      "require": "./dist/index.min.js"
+    },
+    "./mini-utils": {
+      "types": "./src/mini-utils.d.ts",
+      "import": "./dist/mini-utils.min.js",
+      "require": "./dist/mini-utils.min.js"
+    }
+  },
+  "engines": {
+    "node": ">= 24.7.0"
+  },
+  "scripts": {
+    "build": "bash update.sh",
+    "verify": "bash verify.sh",
+    "test": "node --test ./test/test_suite.js",
+    "check": "npm run test && npm run verify",
+    "prepublishOnly": "npm run check"
+  },
+  "keywords": [
+    "csprng",
+    "drbg",
+    "cryptography",
+    "entropy",
+    "random",
+    "temporal-hardening",
+    "argon2",
+    "argon2id",
+    "security",
+    "kmac",
+    "kmac256",
+    "sha3",
+    "hardware-rng",
+    "forward-secrecy",
+    "vm-entropy",
+    "key-generation"
+  ],
+  "dependencies": {
+    "@noble/hashes": "^2.2.0",
+    "fwrap": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typedoc": "^0.28.19"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

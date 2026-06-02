@@ -1,0 +1,25 @@
+# Standard-Verzeichnisse und Abhängigkeiten
+node_modules/
+.git/
+.github/
+docs/
+test/
+media/
+temp/
+
+# SHA256 Prüfsummen ausschließen
+src/**/*.sha256
+dist/**/*.sha256
+**/*.sha256
+*.sha256
+
+# Systemdateien und Locks
+package-lock.json
+.DS_Store
+.gitignore
+
+# Automatisierungsskript
+index.html
+llms-full.txt
+update.sh
+verify.sh

@@ -1,0 +1,24 @@
+name: Verify Integrity
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'dist/**'
+      - 'verify.sh'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Verification
+        run: |
+          chmod +x verify.sh
+          ./verify.sh

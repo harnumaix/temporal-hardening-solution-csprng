@@ -1,0 +1,5 @@
+# Standard-Verzeichnisse und Abhängigkeiten
+node_modules/
+
+# Systemdateien und Locks
+.DS_Store

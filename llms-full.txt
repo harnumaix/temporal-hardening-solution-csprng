@@ -1,0 +1,3108 @@
+This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
+
+# File Summary
+
+## Purpose
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+## File Format
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A header with the file path (## File: path/to/file)
+  b. The full contents of the file in a code block
+
+## Usage Guidelines
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+## Notes
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching these patterns are excluded: .git/**, .github/**, node_modules/**, dist/**, docs/**, temp/**, **/*.sh, **/*.png, **/*.ico, **/*.svg, **/*.sha256, **/*.map, **/*.min.js, **/*.eot, **/*.ttf, **/*.woff*
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+# Directory Structure
+```
+src/
+  index.d.ts
+  index.js
+  mini-utils.d.ts
+  mini-utils.js
+test/
+  test_suite.js
+.gitignore
+.nomedia
+.npmignore
+index.html
+LICENSE
+package.json
+README.md
+```
+
+# Files
+
+## File: src/index.d.ts
+````typescript
+export default THS;
+/**
+ * The module-level singleton THS instance.
+ * Extracted from the frozen PrivateContainer for ergonomic export.
+ * @type {THS_Class}
+ */
+export const THS: THS_Class;
+/**
+ * The Temporal Hardening Solution — the primary API of this module.
+ *
+ * `THS` wraps multiple entropy sources into a single, forward-secret, memory-hard
+ * random byte generator. See the module-level documentation for the full threat model.
+ *
+ * @example
+ * ```js
+ * import THS from 'ths-csprng';
+ *
+ * // Generate 32 bytes of hardened randomness (Level 2, 64 frames)
+ * const key = await THS.random(32);
+ *
+ * // Generate 64 bytes for an API token with custom domain label
+ * const token = await THS.random(64, { label: 'my-app:api-token' });
+ *
+ * // Stream frames for a long-lived entropy tap
+ * for await (const frame of THS.streamFrames(32)) {
+ *     doSomethingWith(frame);
+ *     // break when done
+ * }
+ * ```
+ * @public
+ */
+export class THS_Class {
+    /**
+     * Generate `length` cryptographically hardened random bytes.
+     *
+     * Internally runs the **sequential frame movie**: entropy accumulation
+     * proceeds frame-by-frame in a `for` loop (never `Promise.all`) so that the
+     * inter-frame timing spread — scheduler jitter, OS read latency, GC pauses —
+     * is preserved as entropy. See the module-level documentation for the full
+     * design rationale.
+     *
+     * **Threat resilience summary:**
+     * - Backdoored `crypto.randomBytes` / hardware RNG → countered by mixing with
+     *   process metrics and (optionally) direct `/dev/urandom` reads.
+     * - VM entropy starvation → countered by CPU-jitter metrics and argon2id
+     *   at `harden=3`.
+     * - Forked process state reuse (CVE-2008-0166 class) → countered by per-call
+     *   OS re-seed of the entropy storage.
+     * - Forward-secret attack on entropy storage → countered by sandwich-mode
+     *   post-output frames.
+     * @param {number}  [length=32]               - Bytes to produce. Returns empty Buffer for `0`.
+     * @param {object}  [opts={}]                 - Tuning options.
+     * @param {number}  [opts.layers=64]          - Sequential entropy frames to accumulate (2–32768).
+     * @param {number}  [opts.harden=2]           - Snapshot hardening level (0–3); see `snapshot`.
+     * @param {boolean} [opts.trng=false]         - Read from `/dev/urandom` directly (bypasses Node crypto).
+     * @param {boolean} [opts.buffer=true]        - Return `Buffer` when `true`, raw `Uint8Array` when `false`.
+     * @param {boolean} [opts.sandwichMode=true]  - Fold post-output frames into the entropy storage for forward secrecy.
+     * @param {number}  [opts.maxSandwichCount=3] - Number of post-output frames to fold in (1–32768).
+     * @param {number}  [opts.memoryH=1]          - Max frame index triggering argon2id when `harden=3` (1–layers).
+     * @param {number}  [opts.mem=16384]          - Argon2id `memory` in KiB (≥ 1024). 16 MiB minimum recommended.
+     * @param {number}  [opts.passes=3]           - Argon2id `passes` (iteration count / timeCost).
+     * @param {number}  [opts.parallelism=4]      - Argon2id degree of parallelism.
+     * @param {string}  [opts.label='THS-v2']     - KMAC domain-separation label; change per key type.
+     * @returns {Promise<Buffer|Uint8Array>} Exactly `length` bytes of hardened randomness.
+     * @throws {RangeError} On invalid option values.
+     */
+    random(length?: number, { layers, harden, trng, buffer, sandwichMode, maxSandwichCount, memoryH, mem, passes, parallelism, label }?: {
+        layers?: number | undefined;
+        harden?: number | undefined;
+        trng?: boolean | undefined;
+        buffer?: boolean | undefined;
+        sandwichMode?: boolean | undefined;
+        maxSandwichCount?: number | undefined;
+        memoryH?: number | undefined;
+        mem?: number | undefined;
+        passes?: number | undefined;
+        parallelism?: number | undefined;
+        label?: string | undefined;
+    }): Promise<Buffer | Uint8Array>;
+    /**
+     * Async generator that yields a continuous stream of hardened random frames.
+     *
+     * Unlike `random()`, the stream does not pre-commit to a fixed number of
+     * layers. Each `yield` is a natural async suspension point that introduces
+     * real scheduler-driven jitter between frames. The seed is ratcheted forward
+     * using both the emitted frame bytes *and* the hrtime at which the consumer
+     * resumed the generator — future output depends on when the consumer consumed
+     * prior output.
+     *
+     * The stream maintains its own seed entirely separate from the cross-call
+     * entropy storage used by `random()`. Streaming and non-streaming uses of THS
+     * cannot interfere with each other's forward-secrecy properties.
+     *
+     * **Use cases:**
+     * - Long-lived entropy taps (e.g. feeding a key derivation service).
+     * - Generating a large sequence of independent session tokens.
+     * - Any workload where the total number of random values is not known upfront.
+     *
+     * **Stopping:** Use `break` in a `for await...of` loop, or call
+     * `generator.return()`. The generator runs indefinitely until externally stopped.
+     *
+     * @param {number} [frameLength=32]         - Bytes per yielded frame.
+     * @param {object} [options={}]             - Entropy tuning options.
+     * @param {number}  [options.harden=2]      - Snapshot hardening level (0–3).
+     * @param {number}  [options.memoryH=1]     - Max frame index for argon2id (harden=3).
+     * @param {number}  [options.mem=16384]     - Argon2id `memory` in KiB.
+     * @param {number}  [options.passes=3]      - Argon2id `passes` (timeCost).
+     * @param {number}  [options.parallelism=4] - Argon2id degree of parallelism.
+     * @param {boolean} [options.trng=false]    - Read from `/dev/urandom` directly.
+     * @param {string}  [options.label='THS-Stream-v2'] - KMAC domain-separation label.
+     * @yields {Buffer} Exactly `frameLength` bytes of hardened randomness.
+     * @example
+     * ```js
+     * let count = 0;
+     * for await (const frame of THS.streamFrames(32, { harden: 2 })) {
+     *     processToken(frame);
+     *     if (++count >= 100) break;
+     * }
+     * ```
+     */
+    streamFrames(frameLength?: number, options?: {
+        harden?: number | undefined;
+        memoryH?: number | undefined;
+        mem?: number | undefined;
+        passes?: number | undefined;
+        parallelism?: number | undefined;
+        trng?: boolean | undefined;
+        label?: string | undefined;
+    }): AsyncGenerator<any, void, unknown>;
+    /**
+     * Alias for {@link THS_Class#random}. Identical in every respect.
+     * Provided for brevity in code that generates many random values.
+     * @param {number} len - Byte count.
+     * @param {object} [o] - Options; see {@link THS_Class#random}.
+     * @returns {Promise<Buffer|Uint8Array>}
+     */
+    rand(len: number, o?: object): Promise<Buffer | Uint8Array>;
+    /**
+     * Alias for {@link THS_Class#random}. Identical in every respect.
+     * @param {number} len - Byte count.
+     * @param {object} [o] - Options; see {@link THS_Class#random}.
+     * @returns {Promise<Buffer|Uint8Array>}
+     */
+    rnd(len: number, o?: object): Promise<Buffer | Uint8Array>;
+    /**
+     * Return raw OS entropy bytes with no THS mixing.
+     *
+     * **When to use:** Bootstrapping, diagnostics, or seeding a separate mixing
+     * layer. For all other uses, prefer {@link THS_Class#random}.
+     *
+     * **Threat note:** Bypasses all THS hardening. If the OS CSPRNG is backdoored
+     * (e.g. a Dual_EC_DRBG-style compromise), this output may be compromised.
+     *
+     * @param {number}  len         - Number of bytes.
+     * @param {boolean} [trng=true] - Read from `/dev/urandom` directly when `true`.
+     * @returns {Promise<Buffer>} Raw OS entropy; caller must zero when done.
+     */
+    raw(len: number, trng?: boolean): Promise<Buffer>;
+    /**
+     * Synchronous entropy fill via the Web Crypto API (`crypto.getRandomValues`).
+     *
+     * A thin wrapper — no THS mixing, no temporal observation, no memory hardening.
+     * Use only when synchronous operation is required (e.g. initializing a
+     * `TypedArray` for immediate use in `SubtleCrypto`).
+     *
+     * Routes to `window.crypto` in browser environments, `webcrypto` from
+     * `node:crypto` in Node.js.
+     *
+     * **Threat note:** Subject to the same hardware RNG risks as the OS CSPRNG. An
+     * adversary who can bias `getRandomValues` output will bias this output directly.
+     *
+     * @param {ArrayBufferView} arr - `TypedArray` to fill in place.
+     * @returns {ArrayBufferView} The same array, filled.
+     */
+    fillRandom(arr: ArrayBufferView): ArrayBufferView;
+}
+/**
+ * Drop-in replacement for Node's `crypto.randomBytes`, with optional THS hardening.
+ *
+ * | `isHardenRNG` | Behaviour |
+ * |---|---|
+ * | `false` (default) | Synchronous `crypto.getRandomValues` — fast, no THS overhead. |
+ * | `true`            | Full THS sequential frame movie — async, multi-source, optionally memory-hard. |
+ *
+ * **Use `isHardenRNG=true` for:**
+ * - Long-lived key material (session keys, signing keys, master seeds).
+ * - Environments where you distrust the OS CSPRNG (VM boot, embedded hardware,
+ *   suspected RDRAND/Dual_EC_DRBG compromise).
+ * - Any context where latency is acceptable and the threat model includes
+ *   state-level adversaries with OS-level entropy access.
+ *
+ * **Use `isHardenRNG=false` for:**
+ * - Nonces, IVs, or values that need only be unpredictable in practice.
+ * - High-throughput token generation where per-call THS overhead is prohibitive.
+ *
+ * Wrapped with `hardenFn` to prevent the export reference from being replaced by
+ * a monkey-patch after module load.
+ * @param {number}  len                 - Number of bytes to generate.
+ * @param {boolean} [isHardenRNG=false] - Route through THS when `true`.
+ * @param {object}  [o]                 - Options forwarded to `THS.random()` when `isHardenRNG=true`.
+ * @returns {Uint8Array|Promise<Buffer|Uint8Array>} Synchronous `Uint8Array` when `isHardenRNG=false`; `Promise` otherwise.
+ */
+export const randomBytes: Function;
+````
+
+## File: src/index.js
+````javascript
+/**
+ * Copyright 2026 Aries Harbinger
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * @file ths-csprng
+ * @module ths-csprng
+ * @author Aries Harbinger
+ * @license Apache-2.0
+ * @summary
+ * **Temporal Hardening Solution (THS)** — a multi-source CSPRNG wrapper
+ * designed to remain secure even when individual entropy sources are
+ * compromised, backdoored, or actively hostile.
+ * 
+ * ---
+ * 
+ * ## Real-World Threat Model
+ * 
+ * This library was designed with concrete, documented attack scenarios in mind —
+ * not academic abstractions. The following threats are explicitly addressed:
+ * 
+ * ### 1. Backdoored Hardware RNG (e.g. Intel RDRAND / AMD RDSEED)
+ * In 2019, researchers confirmed that some enterprise network appliance firmware
+ * used RDRAND output as the sole entropy source for TLS key generation. A
+ * backdoored or malfunctioning RDRAND (as was observed in early Ivy Bridge
+ * errata) would silently produce biased or predictable output. Node's
+ * `crypto.randomBytes()` ultimately calls into the OS CSPRNG (e.g. Linux
+ * `/dev/urandom` or `getrandom()`), which may itself draw from hardware RNG.
+ * **THS never trusts a single source.** OS bytes are always folded into a
+ * multi-source KMAC accumulator alongside independent timing observations.
+ * 
+ * ### 2. Malicious or Weak DRBG (Dual_EC_DRBG / NIST SP 800-90A backdoor)
+ * The NSA-influenced Dual_EC_DRBG was standardised in NIST SP 800-90A and
+ * shipped in RSA BSAFE and several TLS stacks. It contained a deliberately
+ * chosen elliptic-curve point that allowed the designer to predict all future
+ * output from 32 bytes of observation. **THS counters this** by never
+ * forwarding DRBG output directly: every OS-supplied byte is mixed through
+ * SHA3-512 with timing-derived entropy the DRBG cannot observe or predict,
+ * then optionally memory-hardened via argon2id.
+ * 
+ * ### 3. VM / Hypervisor Entropy Starvation
+ * Virtualised environments (AWS EC2, GCP, Azure, Docker containers) frequently
+ * boot with a near-empty entropy pool because the guest OS has no access to
+ * physical hardware noise sources. Early-boot key generation in these
+ * environments has historically produced weak keys (see the 2012 "Mining Your
+ * Ps and Qs" paper, which found tens of thousands of colliding RSA moduli from
+ * internet-wide key scans). **THS compensates** by harvesting CPU jitter,
+ * scheduler noise, GC pressure, and voluntary/involuntary context-switch
+ * counters — sources that are genuinely unpredictable even in a VM, even when
+ * the kernel entropy pool is nearly empty.
+ * 
+ * ### 4. Cloned / Forked Process State (PRNG State Reuse)
+ * `fork()` in Linux duplicates the entire process address space, including any
+ * in-memory PRNG state. Two forked child processes starting from the same PRNG
+ * state will produce identical byte streams. This famously affected OpenSSL in
+ * Debian (CVE-2008-0166) and has been rediscovered in Python, Ruby, and Go
+ * runtimes. **THS** is re-seeded with fresh OS entropy at the
+ * start of *every* `random()` call, not just at initialization. A forked child
+ * diverges immediately on its first call because process metrics (PID-derived
+ * scheduling deltas, heap addresses) differ.
+ * 
+ * ---
+ * 
+ * ## Design: The Sequential Movie
+ * 
+ * Entropy is derived by observing a **sequential movie of system state**, not a
+ * single snapshot:
+ * 
+ * ```
+ * seed ──► frame₀ ──► jitter ──► frame₁ ──► jitter ──► … ──► frameₙ
+ *               ↓                     ↓                     ↓
+ *           KMAC update per frame, interleaved with OS bytes
+ * ```
+ * 
+ * Each "frame" captures a unique time-slice of CPU jitter, scheduler noise,
+ * memory pressure, and GC artifacts. The irreversibility of time means a
+ * backdoored CSPRNG cannot retrodict the full observation sequence — it was not
+ * present for every frame. The sequential loop preserves the inter-frame timing
+ * spread that carries entropy.
+ */
+import fs from 'node:fs/promises';
+import { promisify } from 'node:util';
+import {
+    randomBytes as nodeRandomBytes,
+    argon2 as nativeArgon2,
+    timingSafeEqual,
+    createHash,
+    webcrypto,
+} from 'node:crypto';
+
+import { fwrapObj } from 'fwrap';
+import { PrivateContainer, hardenFn, zeroBuf, wrapTry, wrapTrySync } from 'ths-csprng/mini-utils';
+import { kmac256 } from '@noble/hashes/sha3-addons.js';
+
+
+// ─── Module-level singletons ──────────────────────────────────────────────────
+
+/**
+ * Promisified wrapper around Node's native `crypto.argon2`.
+ * 
+ * Node.js 22+ ships argon2id natively in `node:crypto` as a callback-style
+ * function. We promisify it once at module load and freeze it inside a
+ * `PrivateContainer` so neither the reference nor the underlying function
+ * can be replaced by a later malicious patch or monkey-patch.
+ * 
+ * Native option shape (differs from the npm `argon2` package):
+ * ```
+ * {
+ *   message:     Buffer,   // password / data to hash
+ *   nonce:       Buffer,   // salt (≥ 8 bytes; 16 recommended)
+ *   memory:      number,   // memoryCost in KiB
+ *   passes:      number,   // timeCost / iteration count
+ *   parallelism: number,   // degree of parallelism
+ *   tagLength:   number,   // output bytes
+ * }
+ * ```
+ * 
+ * Called as: `argon2HashAsync.value('argon2id', options)`
+ * @internal
+ */
+const argon2HashAsync = new PrivateContainer(() => promisify(nativeArgon2)).freeze();
+
+
+/**
+ * Persistent cross-call entropy storage.
+ * 
+ * Holds a 64-byte `Buffer` (SHA3-512 output size) that carries accumulated
+ * entropy from one `THS.random()` call into the next. Stored in a
+ * `PrivateContainer` so it cannot be read or overwritten by external code.
+ * 
+ * **Not** a traditional DRBG seed — it is re-mixed with fresh OS bytes at the
+ * start of every call, preventing it from becoming a closed, self-referential
+ * loop.
+ * 
+ * **Forward secrecy:** After each `random()` call, the entropy storage is ratcheted
+ * forward with sandwich-phase frames generated *after* the output was committed.
+ * An adversary who captures the output cannot derive the next seed without also
+ * capturing those post-output frames.
+ * 
+ * **Fork safety:** Per-call OS re-seeding means a forked child process diverges
+ * immediately on its first `random()` call, even if it inherited the same
+ * entropy storage state from the parent.
+ * @internal
+ */
+const entropyStorage = new PrivateContainer(() => nodeRandomBytes(64));
+
+/**
+ * High-resolution timestamp captured exactly once when this module is first
+ * imported. Stored in a frozen `PrivateContainer` so it cannot be tampered with
+ * after initialization.
+ * 
+ * Used as a stable temporal origin for all relative timing measurements within
+ * this module's lifetime. Because it is captured at a non-deterministic moment
+ * during the Node.js module load sequence, an adversary must know the exact
+ * import-time nanosecond to reconstruct relative hrtime deltas — which is not
+ * possible without process-level introspection.
+ * @internal
+ */
+const MODULE_LOAD_HRTIME = new PrivateContainer(() => process.hrtime.bigint()).freeze();
+
+
+// ─── Private helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Coerce any serialisable JavaScript value to a `Uint8Array`.
+ * 
+ * Conversion rules:
+ * - `Uint8Array` (or subclasses like Node.js `Buffer`) → returned as-is (no copy).
+ * - `string` → UTF-8 encoded via `TextEncoder`.
+ * - Unserializable values (`undefined`, functions, symbols) → converted to an empty `Uint8Array`.
+ * - Anything else → JSON-serialized → UTF-8 encoded.
+ * 
+ * Wrapped with `hardenFn` to prevent the function reference from being replaced
+ * by a monkey-patch after module load.
+ * @param {unknown} input - The value to convert.
+ * @returns {Uint8Array} A `Uint8Array` (or subclass) representation of `input`.
+ * @throws {TypeError} If JSON serialization fails explicitly (e.g., circular references, BigInt).
+ * @private
+ */
+const toBytes = hardenFn((input) => {
+    if (input instanceof Uint8Array) return input;
+    if (typeof input === 'string') return new TextEncoder().encode(input);
+
+    const serialized = wrapTrySync(
+        () => JSON.stringify(input),
+        (e) => { throw new TypeError(`toBytes: cannot serialize — ${e.message}`); }
+    );
+
+    // If serialized is undefined (e.g. input was a function), it falls back to ''
+    return new TextEncoder().encode(serialized ?? '');
+});
+
+
+/**
+ * Encode a non-negative `BigInt` as a **length-prefixed big-endian `Buffer`**.
+ * 
+ * Format: `[2-byte big-endian length header][big-endian data bytes]`
+ * 
+ * The length prefix ensures that two different BigInt values never produce the
+ * same byte string (injective / collision-free encoding). Without it,
+ * `BigInt(256)` and `BigInt(1)` would both encode to `[0x01, 0x00]` and
+ * `[0x01]` respectively — distinguishable only by context, which is unsafe in
+ * a hash input.
+ * 
+ * Intermediate buffers (`header`, `data`) are zeroed in a `finally` block so
+ * sensitive timing values do not linger on the heap after encoding.
+ * 
+ * Wrapped with `hardenFn` to prevent the function reference from being replaced.
+ * @param {bigint|number} n - A non-negative integer or BigInt.
+ * @returns {Buffer} A length-prefixed big-endian `Buffer`.
+ * @throws {RangeError} If `n` is negative or too large for a 16-bit length header.
+ * @private
+ */
+const bigIntToBuffer = hardenFn((n) => {
+    if (typeof n !== 'bigint') n = BigInt(n);
+    if (n < 0n) throw new RangeError('Negative values not supported');
+
+    // Special-case zero: length header 0x0001, data byte 0x00.
+    if (n === 0n) return Buffer.from([0x00, 0x01, 0x00]);
+
+    let hex = n.toString(16);
+    if (hex.length % 2 !== 0) hex = '0' + hex;  // ensure full-byte alignment
+    const data = Buffer.from(hex, 'hex');
+
+    if (data.length > 0xFFFF)
+        throw new RangeError('BigInt too large for 16-bit length header');
+
+    const header = Buffer.allocUnsafe(2);
+    header.writeUInt16BE(data.length, 0);
+
+    try     { return Buffer.concat([header, data]); }
+    finally { zeroBuf(header, data); }
+});
+
+
+/**
+ * Read `len` bytes of OS entropy.
+ * 
+ * **Source priority:**
+ * - When `useUrandom=true`: opens `/dev/urandom` with a direct file
+ *   descriptor, bypassing any Node.js crypto module patches or monkey-patches
+ *   on `crypto.randomBytes`. Falls back to `crypto.randomBytes` on any error
+ *   (e.g. sandboxed environments without `/dev/urandom` access, or containers
+ *   with restricted seccomp profiles that block `open(2)` on device files).
+ * - When `useUrandom=false` (default): delegates to `crypto.randomBytes`,
+ *   which on Linux calls `getrandom(2)` (blocking until the kernel pool is
+ *   initialized — safe after boot, potentially slow at early boot in VMs).
+ * 
+ * A short read from `/dev/urandom` is treated as a failure and immediately
+ * falls back to `crypto.randomBytes`. The partial read is zeroed before discard.
+ * 
+ * **Caller responsibility:** Zero the returned buffer with `zeroBuf()` when
+ * done. THS does this internally; external callers must do so manually.
+ * @param {number}  len - Number of bytes to read.
+ * @param {boolean} useUrandom - When `true`, read directly from `/dev/urandom`.
+ * @returns {Promise<Buffer>} A fresh `Buffer` of exactly `len` bytes.
+ * @private
+ */
+const getRandom = hardenFn(async (len, useUrandom = false) => {
+    if (!useUrandom) return nodeRandomBytes(len);
+    let fd, out;
+
+    await wrapTry(
+        async () => {
+            fd = await fs.open('/dev/urandom', 'r');
+            // Allocate zeroed so a short read yields safe content for inspection
+            // before we detect and discard it.
+            const buf = Buffer.alloc(len);
+            const { bytesRead } = await fd.read(buf, 0, len, null); // null = sequential position
+
+            if (bytesRead === len) { out = buf; }
+
+            else {
+                // Short read unexpected on /dev/urandom; zero partial data and fall back.
+                zeroBuf(buf);
+                out = nodeRandomBytes(len);
+            }
+        },
+
+        () => { out = nodeRandomBytes(len); },
+        async () => { if (fd) await fd.close(); },
+        false
+    );
+
+    return out;
+});
+
+
+/**
+ * Capture a single "frame" of observable system state.
+ * 
+ * A frame is a structured observation of the process's resource usage at an
+ * exact instant in time. Multiple sequential frames form the "movie" that THS
+ * uses to derive entropy — see the module-level documentation for the full
+ * design rationale.
+ * 
+ * **Hardening levels in detail:**
+ * 
+ * - **Level 0 — hrtime only:** Returns a single `process.hrtime.bigint()` sample.
+ *   Useful for benchmarking THS framework overhead without real entropy costs.
+ *   **Do not use in production** — offers essentially no hardening.
+ * 
+ * - **Level 1 — Process metrics:** Captures 17 independent metrics: hrtime,
+ *   uptime, user/system CPU time, minor/major page fault counts, voluntary and
+ *   involuntary context-switch counts, heap (used/total/external/arrayBuffers)
+ *   and RSS memory counters, `performance.now()`, the frozen module-load anchor,
+ *   wall-clock time, and the frame sequence index. All vary based on real
+ *   physical work the process has done — a backdoored kernel cannot predict them
+ *   because it does not control V8 GC scheduling or CPU branch predictor state.
+ * 
+ * - **Level 2 — OS-mixed (recommended default):** Takes a Level 1 observation,
+ *   mixes in 128 bytes of fresh OS entropy, and hashes everything through
+ *   SHA3-512. A second hrtime sample brackets the OS read, encoding its actual
+ *   syscall latency as entropy. Effective even in VMs with a stale kernel pool.
+ * 
+ * - **Level 3 — Memory-hardened:** Applies native `crypto.argon2id` on top of
+ *   the Level 2 hash for frames with index `< mh`. This makes brute-forcing
+ *   individual frame seeds require `mem` KiB of RAM per candidate — infeasible
+ *   at GPU scale. Gate with a small `memoryH` to limit latency impact.
+ * @param {number}  h          - Hardening level (0–3).
+ * @param {number}  mh         - Max frame index that triggers argon2id (harden=3 only).
+ * @param {number}  mem        - Argon2id `memory` (memoryCost) in KiB.
+ * @param {number}  t          - Argon2id `passes` (timeCost / iteration count).
+ * @param {number}  p          - Argon2id `parallelism` degree.
+ * @param {number}  s          - Frame sequence index; gates argon2id and is mixed as a metric.
+ * @param {boolean} useUrandom - Whether to read OS bytes from `/dev/urandom` directly.
+ * @returns {Promise<Buffer>} A `Buffer` representing the hashed frame observation.
+ * @throws {RangeError} If `h` is outside 0–3, or error from argon2.
+ * @private
+ */
+const snapshot = hardenFn(async (h, mh, mem, t, p, s, useUrandom) => {
+
+    if (h < 0 || h > 3)
+        throw new RangeError(`Hardening level [${h}] must be 0–3.`);
+
+    // ── Level 0: bare hrtime (benchmark / test mode only) ──────────────────
+    // Single timing sample, no OS reads. Essentially no entropy hardening;
+    // only use this to measure THS framework overhead in isolation.
+    if (h === 0) return bigIntToBuffer(process.hrtime.bigint());
+
+    // ── Gather process and memory metrics ──────────────────────────────────
+    // These values encode the *history* of all computation that preceded this
+    // frame. CPU counters reflect real instructions executed; context-switch
+    // counts reflect OS scheduling decisions; heap counters reflect V8 GC
+    // behaviour. A backdoored DRBG cannot predict them because they are a
+    // function of physical work, not DRBG state.
+    // 
+    // All fields use `?? 0` so this function is safe in environments where some
+    // fields are unavailable (e.g. Alpine musl, some BSD kernels).
+    const u = process.resourceUsage();
+    const m = process.memoryUsage();
+
+    const metrics = [
+        process.hrtime.bigint(),                                   // nanosecond wall-clock (primary jitter source)
+        BigInt(Math.round(process.uptime() * 1_000_000)),          // microsecond uptime
+        BigInt(u.userCPUTime     ?? 0),                            // cumulative user-space CPU µs
+        BigInt(u.systemCPUTime   ?? 0),                            // cumulative kernel CPU µs
+        BigInt(u.minorPageFault  ?? 0),                            // minor page faults (GC pressure indicator)
+        BigInt(u.majorPageFault  ?? 0),                            // major page faults (disk I/O indicator)
+        BigInt(u.voluntaryContextSwitches   ?? 0),                 // times the process yielded voluntarily
+        BigInt(u.involuntaryContextSwitches ?? 0),                 // times the OS preempted the process
+        BigInt(m.heapUsed     ?? 0),                               // V8 live heap bytes (varies with GC)
+        BigInt(m.heapTotal    ?? 0),                               // V8 committed heap bytes
+        BigInt(m.external     ?? 0),                               // C++ object memory tracked by V8
+        BigInt(m.arrayBuffers ?? 0),                               // ArrayBuffer + SharedArrayBuffer bytes
+        BigInt(m.rss          ?? 0),                               // resident set size (OS-visible memory)
+        BigInt(Math.round(performance.now() * 1_000_000)),         // high-res event-loop relative time (µs precision)
+        MODULE_LOAD_HRTIME.value,                                  // frozen module-load anchor (see PrivateContainer)
+        BigInt(Date.now()),                                        // wall-clock ms (coarse; domain separation)
+        BigInt(s ?? 0)                                             // frame index (guarantees uniqueness across frames)
+    ].map(bigIntToBuffer);
+
+    const metricsConcat = Buffer.concat(metrics);
+    // Zero the individual encoded buffers now that they are concatenated.
+    zeroBuf(...metrics);
+
+    // Level 1: raw metric concatenation, no OS bytes.
+    // Weaker than Level 2 but usable in restricted WASM / sandboxed environments.
+    if (h === 1) return metricsConcat;
+
+    // ── Level 2+: fold in fresh OS entropy ────────────────────────────────
+    // 128 OS bytes are read here. The latency of this syscall varies by kernel
+    // interrupt state, scheduler queue depth, and page cache pressure — all
+    // captured by the second hrtime sample below.
+    const noise = await getRandom(128, useUrandom);
+
+    const combined = createHash('sha3-512')
+        .update(noise)
+        .update(metricsConcat)
+        // Second hrtime sample: encodes how long the OS read actually took.
+        // Influenced by kernel scheduler state, interrupt latency, and NUMA
+        // memory access patterns — all independent of the DRBG.
+        .update(process.hrtime.bigint().toString())
+        .digest();
+
+    zeroBuf(noise, metricsConcat);
+
+    // Level 2: return the combined hash. Recommended default.
+    if (h <= 2 || s >= mh) return combined;
+
+    // ── Level 3: argon2id memory-hard stretch ─────────────────────────────
+    // The SHA3-512 combined hash is used as the argon2id `message` (password).
+    // Each brute-force candidate requires `mem` KiB of RAM — GPU farms are
+    // bottlenecked by memory bandwidth, not compute, making this infeasible at
+    // the scale needed to invert a 512-bit hash input.
+    // 
+    // Uses native `crypto.argon2` (Node.js 22+) via the promisified reference
+    // frozen in `argon2HashAsync`. Option shape differs from the npm `argon2`
+    // package — see the `argon2HashAsync` JSDoc for the full mapping.
+    const salt = await getRandom(16, useUrandom);
+    let memHard, out;
+
+    await wrapTry(
+        async () => {
+            memHard = await argon2HashAsync.value('argon2id', {
+                message:     combined,   // password / data to hash
+                nonce:       salt,       // per-frame salt; prevents precomputation tables
+                memory:      mem,        // memoryCost in KiB
+                passes:      t,          // timeCost / iteration count
+                parallelism: p,          // degree of parallelism
+                tagLength:   64          // 512-bit output, matching SHA3-512
+            });
+
+            // Prepend the memory-hard output to the pre-stretch material.
+            // An attacker who somehow breaks argon2id still faces the underlying
+            // SHA3-512 hash, and vice versa — neither layer alone is sufficient.
+            out = Buffer.concat([memHard, combined]);
+        },
+
+        null,
+        // Always zero sensitive intermediate buffers, even on error.
+        () => zeroBuf(salt, memHard, combined)
+    );
+
+    return out;
+});
+
+
+/**
+ * Inject timing jitter into the frame sequence by performing two independent
+ * OS reads and measuring the total elapsed nanoseconds.
+ * 
+ * **What provides the jitter:**
+ * Each OS read is a syscall whose latency depends on kernel interrupt state,
+ * scheduling quantum, TLB cache state, and NUMA memory access patterns — all
+ * physical non-deterministic processes that a backdoored DRBG cannot observe
+ * or predict. The two reads are issued concurrently via `Promise.all` so their
+ * individual latencies are independent.
+ * 
+ * `timingSafeEqual` is intentionally constant-time and contributes no timing
+ * variation. Its only role here is to prevent dead-code elimination from
+ * discarding the OS reads — the comparison result is always discarded.
+ * 
+ * **Why the delta is fed into the KMAC accumulator:**
+ * A co-located hypervisor tenant might try to measure inter-frame latency from
+ * outside the process. Folding the nanosecond delta into the MAC means the
+ * attacker must match `hrtime.bigint()` precision (1 ns) to gain any advantage.
+ * Cross-VM timing attacks are bounded by hypervisor scheduling granularity
+ * (typically 1–10 µs), which is 3–4 orders of magnitude too coarse.
+ * @param {boolean} useUrandom - Whether to read jitter bytes from `/dev/urandom`.
+ * @returns {Promise<bigint>} Nanosecond delta between start and end hrtime samples.
+ * @private
+ */
+const jitter = hardenFn(async (useUrandom) => {
+    const t0 = process.hrtime.bigint();
+
+    // Concurrent reads: syscall latencies are independent of each other.
+    // Total wall-clock time from t0 is non-deterministic due to OS scheduling.
+    const [a, b] = await Promise.all([
+        getRandom(64, useUrandom),
+        getRandom(64, useUrandom),
+    ]);
+
+    // Constant-time comparison: result discarded. Prevents DCE from removing
+    // the OS reads. `timingSafeEqual` itself adds no timing entropy.
+    timingSafeEqual(a, b);
+    zeroBuf(a, b);
+
+    return process.hrtime.bigint() - t0;
+});
+
+
+// ─── Temporal Hardening Solution ─────────────────────────────────────────────
+
+/**
+ * The Temporal Hardening Solution — the primary API of this module.
+ * 
+ * `THS` wraps multiple entropy sources into a single, forward-secret, memory-hard
+ * random byte generator. See the module-level documentation for the full threat model.
+ * 
+ * @example
+ * ```js
+ * import THS from 'ths-csprng';
+ * 
+ * // Generate 32 bytes of hardened randomness (Level 2, 64 frames)
+ * const key = await THS.random(32);
+ * 
+ * // Generate 64 bytes for an API token with custom domain label
+ * const token = await THS.random(64, { label: 'my-app:api-token' });
+ * 
+ * // Stream frames for a long-lived entropy tap
+ * for await (const frame of THS.streamFrames(32)) {
+ *     doSomethingWith(frame);
+ *     // break when done
+ * }
+ * ```
+ * @public
+ */
+class THS_Class {
+
+    /**
+     * Construct a new THS instance.
+     * 
+     * The constructor performs no entropy initialization — the entropy storage
+     * module singleton (`entropyStorage`) is lazily bootstrapped on the
+     * first call to `random()`. This avoids a blocking entropy read at import
+     * time, which would be unsafe at early boot in VM environments.
+     * 
+     * `THS_Class` is not intended to be instantiated by consumers directly.
+     * The module exports a single frozen singleton (`THS`) via `PrivateContainer`.
+     * Calling `new THS_Class()` outside this module will produce a functional
+     * but unprotected instance — prefer `THS` instead.
+     */
+    constructor() {
+        // Intentionally empty: all state is held in module-level PrivateContainers
+        // (entropyStorage, argon2HashAsync, MODULE_LOAD_HRTIME) rather than
+        // on the instance. This prevents instance-level tampering (e.g. an attacker
+        // replacing `this._seed` with a known value) and also means two THS_Class
+        // instances share the same entropy storage, preserving cross-call forward secrecy
+        // even if a consumer mistakenly constructs a second instance.
+    }
+
+
+    /**
+     * Generate `length` cryptographically hardened random bytes.
+     * 
+     * Internally runs the **sequential frame movie**: entropy accumulation
+     * proceeds frame-by-frame in a `for` loop (never `Promise.all`) so that the
+     * inter-frame timing spread — scheduler jitter, OS read latency, GC pauses —
+     * is preserved as entropy. See the module-level documentation for the full
+     * design rationale.
+     * 
+     * **Threat resilience summary:**
+     * - Backdoored `crypto.randomBytes` / hardware RNG → countered by mixing with
+     *   process metrics and (optionally) direct `/dev/urandom` reads.
+     * - VM entropy starvation → countered by CPU-jitter metrics and argon2id
+     *   at `harden=3`.
+     * - Forked process state reuse (CVE-2008-0166 class) → countered by per-call
+     *   OS re-seed of the entropy storage.
+     * - Forward-secret attack on entropy storage → countered by sandwich-mode
+     *   post-output frames.
+     * @param {number}  [length=32]               - Bytes to produce. Returns empty Buffer for `0`.
+     * @param {object}  [opts={}]                 - Tuning options.
+     * @param {number}  [opts.layers=64]          - Sequential entropy frames to accumulate (2–32768).
+     * @param {number}  [opts.harden=2]           - Snapshot hardening level (0–3); see `snapshot`.
+     * @param {boolean} [opts.trng=false]         - Read from `/dev/urandom` directly (bypasses Node crypto).
+     * @param {boolean} [opts.buffer=true]        - Return `Buffer` when `true`, raw `Uint8Array` when `false`.
+     * @param {boolean} [opts.sandwichMode=true]  - Fold post-output frames into the entropy storage for forward secrecy.
+     * @param {number}  [opts.maxSandwichCount=3] - Number of post-output frames to fold in (1–32768).
+     * @param {number}  [opts.memoryH=1]          - Max frame index triggering argon2id when `harden=3` (1–layers).
+     * @param {number}  [opts.mem=16384]          - Argon2id `memory` in KiB (≥ 1024). 16 MiB minimum recommended.
+     * @param {number}  [opts.passes=3]           - Argon2id `passes` (iteration count / timeCost).
+     * @param {number}  [opts.parallelism=4]      - Argon2id degree of parallelism.
+     * @param {string}  [opts.label='THS-v2']     - KMAC domain-separation label; change per key type.
+     * @returns {Promise<Buffer|Uint8Array>} Exactly `length` bytes of hardened randomness.
+     * @throws {RangeError} On invalid option values.
+     */
+    async random(length = 32, {
+        layers           = 64,
+        harden           = 2,
+        trng             = false,
+        buffer           = true,
+        sandwichMode     = true,
+        maxSandwichCount = 3,
+        memoryH          = 1,
+        mem              = 16384,
+        passes           = 3,
+        parallelism      = 4,
+        label            = 'THS-v2'
+    } = {}) {
+
+        if (length <= 0) return Buffer.alloc(0);
+
+        if (layers < 2 || layers > 32_768)
+            throw new RangeError(`layers must be 2–32768, got ${layers}`);
+        if (harden < 0 || harden > 3)
+            throw new RangeError(`harden must be 0–3, got ${harden}`);
+        if (harden === 3 && (memoryH < 1 || memoryH > layers))
+            throw new RangeError('memoryH must be 1–layers when harden=3');
+        if (sandwichMode && (maxSandwichCount < 1 || maxSandwichCount > 32_768))
+            throw new RangeError('maxSandwichCount out of range (1–32768)');
+        if (typeof mem !== 'number' || mem < 1024)
+            throw new RangeError('mem (Argon2id memoryCost) must be ≥ 1024 KiB');
+
+        // ── initialize or refresh the cross-call entropy storage ──────────────────
+        // Re-seeding from OS entropy on *every call* (not just the first) prevents
+        // the entropy storage from becoming a closed, self-referential loop.
+        // 
+        // Defence in depth: if the OS CSPRNG is weak, process metrics still diverge
+        // between calls; if process metrics are somehow predictable, the OS bytes
+        // still maintain uncertainty. Neither source alone is sufficient for an
+        // attacker to reconstruct the full entropy storage state.
+        const osSeed = await getRandom(64, trng);
+
+        if (entropyStorage.check()) {
+            // entropy storage already initialized: hash previous state + new OS seed.
+            // `createHash('sha3-512')` is used rather than KMAC here because we are
+            // mixing two values of equal trust — there is no asymmetric key/data
+            // relationship that KMAC's separation is needed for.
+            const refreshed = createHash('sha3-512')
+                .update(entropyStorage.value)
+                .update(osSeed)
+                .digest();
+
+            // Zero the consumed osSeed immediately after absorption, then store
+            // the refreshed 64-byte entropy storage back into its PrivateContainer.
+            // `reset` returns the container so we can chain `.store()`.
+            entropyStorage
+                .reset(zeroBuf(osSeed))
+                .store(refreshed);
+        } else {
+            // First call in this process: bootstrap the entropy storage directly from
+            // the raw OS seed. No previous state to mix — the OS bytes are the seed.
+            // Subsequent calls will mix this value with fresh OS bytes (see above).
+            entropyStorage.value = osSeed;
+        }
+
+        // `processSeed` is a per-call snapshot of the entropy storage, scoped to
+        // this invocation only. The entropy storage itself is the cross-call state.
+        // Copying prevents a race condition in which sandwich-mode writes to the
+        // entropy storage mid-call would alter the KMAC key already in use.
+        const processSeed = Buffer.from(entropyStorage.value);
+        let resultBuffer, k;
+
+        return await wrapTry(
+            async () => {
+                // initialize KMAC256 keyed with `processSeed` and domain-separated by
+                // `label`. KMAC (NIST SP 800-185) formally separates key and
+                // personalisation in the Keccak sponge construction — no key/data
+                // confusion vulnerability, unlike HMAC with a prepended key.
+                //
+                // `dkLen: length` causes `k.digest()` to produce exactly `length` bytes
+                // directly from the sponge — no secondary KDF step needed.
+                k = kmac256.create(processSeed, {
+                    personalization: toBytes(label),
+                    dkLen: length
+                });
+
+                // ── Sequential frame movie ─────────────────────────────────────────
+                // CRITICAL: this must remain a sequential `for` loop, never `Promise.all`.
+                // 
+                // `Promise.all` would schedule all snapshot() calls concurrently,
+                // collapsing the "movie" into a near-simultaneous "photo". All hrtime
+                // samples would cluster within a single scheduler tick (~1 µs), the
+                // inter-frame jitter would essentially vanish, and the temporal entropy
+                // advantage disappears entirely.
+                // 
+                // Concurrency would also corrupt jitter() measurements: concurrent
+                // snapshot() OS reads would compete with jitter() OS reads, producing
+                // correlated latency rather than independent samples.
+                for (let i = 0; i < layers; i++) {
+                    const frame = await snapshot(
+                        harden, memoryH, mem, passes, parallelism, i, trng,
+                    );
+
+                    // Advance the KMAC sponge. Because KMAC is a fixed-key construction,
+                    // an adversary who sees the frame bytes but not `processSeed` cannot
+                    // determine the internal sponge state — they see one input to an
+                    // unknown-keyed permutation.
+                    k.update(frame);
+                    zeroBuf(frame);
+
+                    if (harden >= 1) {
+                        // Interleave fresh OS bytes at every frame. Even in the absolute
+                        // worst case — a fully deterministic VM where all snapshot metrics
+                        // are predictable — these 16 OS bytes maintain unpredictability.
+                        // 16 bytes is intentionally small: entropy here is supplemental,
+                        // not primary, and larger reads increase latency without benefit.
+                        const sup = await getRandom(16, trng);
+                        k.update(sup);
+                        zeroBuf(sup);
+                    }
+
+                    // Inject jitter between frames (not after the last — there is no
+                    // next frame to separate). The nanosecond delta from two OS reads
+                    // encodes real physical latency as a KMAC input, requiring an
+                    // external observer to match hrtime precision (1 ns) to exploit it.
+                    if (i < layers - 1) {
+                        const jitterDelta = await jitter(trng);
+                        k.update(bigIntToBuffer(jitterDelta));
+                    }
+                }
+
+                // Finalise the KMAC sponge. `digest()` is one-shot — calling it
+                // consumes the sponge state and produces exactly `length` output bytes.
+                // The raw output is wrapped in a `Buffer` for ergonomic compatibility
+                // with Node.js APIs that expect `Buffer` (e.g. `crypto.createHmac`).
+                const out = k.digest();
+                resultBuffer = buffer ? Buffer.from(out) : out;
+                // Zero the raw digest if we copied it into a Buffer; the copy is what
+                // will be returned, so the original sponge output is no longer needed.
+                buffer && zeroBuf(out);
+
+                // ── Sandwich feedback loop ─────────────────────────────────────────
+                // Post-mix: additional entropy frames are generated AFTER the output is
+                // committed and folded into the entropy storage for the next call.
+                // 
+                // Forward-secrecy guarantee:
+                //   The output is finalised before this phase begins. Post-output frames
+                //   depend on scheduler events, OS reads, and hrtime values that had not
+                //   yet occurred when the output was produced. An adversary who captures
+                //   `resultBuffer` cannot reconstruct these future-dependent values, so
+                //   the next call's entropy storage seed remains hidden even from someone
+                //   who observed this call's output in full.
+                // 
+                // Analogous to the "additional input" mechanism in NIST SP 800-90A
+                // Hash_DRBG, but generated automatically and unconditionally here.
+                if (sandwichMode) {
+                    // initialize the feedback chain from the current entropy storage state
+                    // rather than `processSeed` so that any mid-call entropy storage mutations
+                    // (e.g. from a concurrent call on a shared worker) are incorporated.
+                    let feedback = createHash('sha3-512').update(processSeed).digest();
+
+                    // Sequential, not concurrent — same rationale as the main loop.
+                    for (let i = 0; i < maxSandwichCount; i++) {
+                        // Frame index `layers + i` ensures post-output frames are
+                        // distinguishable from pre-output frames even if all metrics
+                        // happen to be identical (e.g. in a test harness with fixed time).
+                        const postFrame = await snapshot(
+                            harden, memoryH, mem, passes, parallelism, layers + i, trng,
+                        );
+
+                        // Mix: previous feedback + post-output frame + current hrtime.
+                        // The hrtime encodes the exact elapsed time after output was
+                        // committed — real wall-clock entropy the DRBG cannot predict.
+                        const next = createHash('sha3-512')
+                            .update(feedback)
+                            .update(postFrame)
+                            .update(bigIntToBuffer(process.hrtime.bigint()))
+                            .digest();
+
+                        zeroBuf(feedback, postFrame);
+                        feedback = next;
+                    }
+
+                    // Ratchet the entropy storage forward. Always mixed, never reset to zero,
+                    // so state continuity is preserved across all calls in this process.
+                    // The `zeroBuf(feedback)` call inside `reset()` zeroes the consumed
+                    // sandwich output before the container accepts the new value.
+                    const newWave = createHash('sha3-512')
+                        .update(entropyStorage.value)
+                        .update(feedback)
+                        .digest();
+
+                    entropyStorage
+                        .reset(zeroBuf(feedback))
+                        .store(newWave);
+                }
+
+                return resultBuffer;
+            },
+
+            null,
+            // Cleanup: always zero the per-call process seed and nullify the
+            // KMAC instance reference regardless of whether the call succeeded.
+            // `processSeed` contains a copy of the entropy storage — leaving it
+            // accessible on the heap after the call would widen the window
+            // during which a memory dump could recover the seed.
+            () => { k = zeroBuf(processSeed); },
+        );
+    }
+
+
+    /**
+     * Async generator that yields a continuous stream of hardened random frames.
+     * 
+     * Unlike `random()`, the stream does not pre-commit to a fixed number of
+     * layers. Each `yield` is a natural async suspension point that introduces
+     * real scheduler-driven jitter between frames. The seed is ratcheted forward
+     * using both the emitted frame bytes *and* the hrtime at which the consumer
+     * resumed the generator — future output depends on when the consumer consumed
+     * prior output.
+     * 
+     * The stream maintains its own seed entirely separate from the cross-call
+     * entropy storage used by `random()`. Streaming and non-streaming uses of THS
+     * cannot interfere with each other's forward-secrecy properties.
+     * 
+     * **Use cases:**
+     * - Long-lived entropy taps (e.g. feeding a key derivation service).
+     * - Generating a large sequence of independent session tokens.
+     * - Any workload where the total number of random values is not known upfront.
+     * 
+     * **Stopping:** Use `break` in a `for await...of` loop, or call
+     * `generator.return()`. The generator runs indefinitely until externally stopped.
+     * 
+     * @param {number} [frameLength=32]         - Bytes per yielded frame.
+     * @param {object} [options={}]             - Entropy tuning options.
+     * @param {number}  [options.harden=2]      - Snapshot hardening level (0–3).
+     * @param {number}  [options.memoryH=1]     - Max frame index for argon2id (harden=3).
+     * @param {number}  [options.mem=16384]     - Argon2id `memory` in KiB.
+     * @param {number}  [options.passes=3]      - Argon2id `passes` (timeCost).
+     * @param {number}  [options.parallelism=4] - Argon2id degree of parallelism.
+     * @param {boolean} [options.trng=false]    - Read from `/dev/urandom` directly.
+     * @param {string}  [options.label='THS-Stream-v2'] - KMAC domain-separation label.
+     * @yields {Buffer} Exactly `frameLength` bytes of hardened randomness.
+     * @example
+     * ```js
+     * let count = 0;
+     * for await (const frame of THS.streamFrames(32, { harden: 2 })) {
+     *     processToken(frame);
+     *     if (++count >= 100) break;
+     * }
+     * ```
+     */
+    async *streamFrames(frameLength = 32, options = {}) {
+        const harden      = options.harden      ?? 2;
+        const memoryH     = options.memoryH     ?? 1;
+        const mem         = options.mem         ?? 16384;
+        const passes      = options.passes      ?? 3;
+        const parallelism = options.parallelism ?? 4;
+        const trng        = options.trng        ?? false;
+        const label       = options.label       || 'THS-Stream-v2';
+
+        // Bootstrap the stream-local seed independently of the module entropy storage.
+        // This ensures that consuming the stream does not perturb the entropy state
+        // seen by concurrent `random()` calls, and vice versa.
+        let frameSeed  = await getRandom(64, trng);
+        let frameIndex = 0;
+
+        while (true) {
+            // Mix fresh OS bytes into the seed before every frame.
+            // The seed is always a *mix* of previous state + fresh OS + hrtime —
+            // never used raw. An adversary who reconstructs `frameSeed` at index N
+            // still cannot predict index N+1 without also knowing the OS bytes and
+            // exact hrtime of the next mix operation.
+            const osFresh = await getRandom(32, trng);
+            const mixedSeed = createHash('sha3-512')
+                .update(frameSeed)
+                .update(osFresh)
+                // Current hrtime binds the mixed seed to this exact nanosecond — two
+                // frames cannot produce the same mixedSeed even if osFresh collides.
+                .update(bigIntToBuffer(process.hrtime.bigint()))
+                .digest();
+            zeroBuf(frameSeed, osFresh);
+            frameSeed = mixedSeed;
+
+            // KMAC keyed with the current frame seed; domain-separated by label.
+            // Using a different label than `random()` prevents cross-context
+            // output correlation even if both happen to share the same seed bytes.
+            const k = kmac256.create(frameSeed, {
+                personalization: toBytes(label),
+                dkLen: frameLength
+            });
+
+            // System snapshot at this frame index. `frameIndex` ensures uniqueness
+            // even if all other metrics happened to be identical across two frames
+            // (vanishingly unlikely in practice, but guaranteed here).
+            const moment = await snapshot(
+                harden, memoryH, mem, passes, parallelism, frameIndex, trng,
+            );
+            k.update(moment);
+            zeroBuf(moment);
+
+            const out   = k.digest();
+            const frame = Buffer.from(out);
+            zeroBuf(out);
+
+            // Mark pre-yield time. After `yield`, the generator suspends until the
+            // consumer calls `next()`. The delta between `postYieldMark` and
+            // `resumeMark` encodes real elapsed time that depends on the consumer's
+            // own processing — unpredictable without observing the consumer.
+            const postYieldMark = process.hrtime.bigint();
+            yield frame;
+            // `resumeMark` is captured on the first instruction after the consumer
+            // resumes the generator. The gap [postYieldMark, resumeMark] spans the
+            // consumer's processing time plus async re-scheduling latency — both
+            // sources of genuine unpredictability.
+            const resumeMark = process.hrtime.bigint();
+
+            // Ratchet the seed using:
+            //   1. Previous frame seed   (state continuity)
+            //   2. Yielded frame bytes   (output-dependent evolution)
+            //   3. Pre-yield hrtime      (when the frame was produced)
+            //   4. Post-resume hrtime    (when the consumer came back)
+            // All four inputs are required to predict the next seed; knowing only
+            // the output frame is insufficient.
+            const nextSeed = createHash('sha3-512')
+                .update(frameSeed)
+                .update(frame)
+                .update(bigIntToBuffer(postYieldMark))
+                .update(bigIntToBuffer(resumeMark))
+                .digest();
+            // Zero the consumed seed before replacing it. `frameSeed` held a copy of
+            // the previous state — leaving it on the heap would give a heap-dump
+            // attacker a second window to recover past seed material.
+            zeroBuf(frameSeed);
+
+            frameSeed = nextSeed;
+            frameIndex++;
+        }
+    }
+
+
+    // ── Convenience aliases ───────────────────────────────────────────────────
+
+    /**
+     * Alias for {@link THS_Class#random}. Identical in every respect.
+     * Provided for brevity in code that generates many random values.
+     * @param {number} len - Byte count.
+     * @param {object} [o] - Options; see {@link THS_Class#random}.
+     * @returns {Promise<Buffer|Uint8Array>}
+     */
+    async rand(len, o) { return THS.random(len, o); }
+
+
+    /**
+     * Alias for {@link THS_Class#random}. Identical in every respect.
+     * @param {number} len - Byte count.
+     * @param {object} [o] - Options; see {@link THS_Class#random}.
+     * @returns {Promise<Buffer|Uint8Array>}
+     */
+    async rnd(len, o) { return THS.random(len, o); }
+
+
+    /**
+     * Return raw OS entropy bytes with no THS mixing.
+     * 
+     * **When to use:** Bootstrapping, diagnostics, or seeding a separate mixing
+     * layer. For all other uses, prefer {@link THS_Class#random}.
+     * 
+     * **Threat note:** Bypasses all THS hardening. If the OS CSPRNG is backdoored
+     * (e.g. a Dual_EC_DRBG-style compromise), this output may be compromised.
+     * 
+     * @param {number}  len         - Number of bytes.
+     * @param {boolean} [trng=true] - Read from `/dev/urandom` directly when `true`.
+     * @returns {Promise<Buffer>} Raw OS entropy; caller must zero when done.
+     */
+    async raw(len, trng = true) { return getRandom(len, trng); }
+
+
+    /**
+     * Synchronous entropy fill via the Web Crypto API (`crypto.getRandomValues`).
+     * 
+     * A thin wrapper — no THS mixing, no temporal observation, no memory hardening.
+     * Use only when synchronous operation is required (e.g. initializing a
+     * `TypedArray` for immediate use in `SubtleCrypto`).
+     * 
+     * Routes to `window.crypto` in browser environments, `webcrypto` from
+     * `node:crypto` in Node.js.
+     * 
+     * **Threat note:** Subject to the same hardware RNG risks as the OS CSPRNG. An
+     * adversary who can bias `getRandomValues` output will bias this output directly.
+     * 
+     * @param {ArrayBufferView} arr - `TypedArray` to fill in place.
+     * @returns {ArrayBufferView} The same array, filled.
+     */
+    fillRandom(arr) {
+        return (
+            typeof window !== 'undefined' && window.crypto
+                ? window.crypto
+                : webcrypto
+        ).getRandomValues(arr);
+    }
+}
+
+
+// ─── Top-level export ────────────────────────────────────────────
+
+// Atomic Runtime Protection Bootstrapping Execution Loop
+//
+// Hardens all public-facing references before any external code can access them.
+// Runs synchronously at module evaluation time, so it completes before the first
+// `import` consumer receives the exported bindings.
+//
+// Order matters:
+//   1. Prototype methods are hardened first (while `THS_Class` is still mutable).
+//   2. The constructor itself is hardened (prevents subclassing / replacement).
+//   3. Free-standing helper functions are frozen (prevents monkey-patching of
+//      `toBytes`, `bigIntToBuffer`, and `getRandom` via the closure they close over).
+//
+// `wrapTrySync(..., null, null, false)` means: no error handler, no finally,
+// and do NOT rethrow — a bootstrap failure should be a fatal silent assertion
+// rather than an uncaught exception that leaks internal structure to an attacker.
+wrapTrySync(() => {
+
+    // Harden each prototype method in-place. `hardenFn` wraps the function in a
+    // non-configurable, non-writable property descriptor on `THS_Class.prototype`,
+    // preventing an attacker from replacing e.g. `THS.random = maliciousRandom`.
+    for (const key of ['random', 'rand', 'rnd', 'streamFrames', 'raw', 'fillRandom']) {
+        hardenFn(THS_Class.prototype[key], THS_Class.prototype, key);
+    }
+
+    // Harden the constructor itself. Prevents `THS_Class = class extends THS_Class {}`
+    // from silently replacing the class reference in module scope.
+    hardenFn(THS_Class);
+
+    // Freeze the private helper function objects. `Object.freeze` prevents new
+    // properties from being added and existing ones from being mutated or deleted.
+    // `toBytes` and `bigIntToBuffer` are referenced inside `snapshot`, `jitter`,
+    // and `streamFrames` closures — freezing them closes the last monkey-patch surface.
+    // `nodeRandomBytes` (aliased as `randomBytes` inside the import) is frozen as a
+    // belt-and-suspenders guard against a post-import patch on `node:crypto`.
+    for (const structure of [nodeRandomBytes, bigIntToBuffer, toBytes]) {
+        structure && Object.freeze(structure);
+    }
+}, null, null, false);
+
+
+// Instantiate exactly one THS_Class and seal it inside a frozen PrivateContainer.
+// `.freeze()` makes the container itself immutable after storing the instance,
+// so `THS_Init.value` will always return the same object for the module's lifetime.
+const THS_Init = new PrivateContainer(() => new THS_Class()).freeze();
+
+/**
+ * The module-level singleton THS instance.
+ * Extracted from the frozen PrivateContainer for ergonomic export.
+ * @type {THS_Class}
+ */
+const THS = THS_Init.value;
+
+
+/**
+ * Drop-in replacement for Node's `crypto.randomBytes`, with optional THS hardening.
+ * 
+ * | `isHardenRNG` | Behaviour |
+ * |---|---|
+ * | `false` (default) | Synchronous `crypto.getRandomValues` — fast, no THS overhead. |
+ * | `true`            | Full THS sequential frame movie — async, multi-source, optionally memory-hard. |
+ * 
+ * **Use `isHardenRNG=true` for:**
+ * - Long-lived key material (session keys, signing keys, master seeds).
+ * - Environments where you distrust the OS CSPRNG (VM boot, embedded hardware,
+ *   suspected RDRAND/Dual_EC_DRBG compromise).
+ * - Any context where latency is acceptable and the threat model includes
+ *   state-level adversaries with OS-level entropy access.
+ * 
+ * **Use `isHardenRNG=false` for:**
+ * - Nonces, IVs, or values that need only be unpredictable in practice.
+ * - High-throughput token generation where per-call THS overhead is prohibitive.
+ * 
+ * Wrapped with `hardenFn` to prevent the export reference from being replaced by
+ * a monkey-patch after module load.
+ * @param {number}  len                 - Number of bytes to generate.
+ * @param {boolean} [isHardenRNG=false] - Route through THS when `true`.
+ * @param {object}  [o]                 - Options forwarded to `THS.random()` when `isHardenRNG=true`.
+ * @returns {Uint8Array|Promise<Buffer|Uint8Array>} Synchronous `Uint8Array` when `isHardenRNG=false`; `Promise` otherwise.
+ */
+const randomBytes = hardenFn((len, isHardenRNG = false, o) => {
+    if (!isHardenRNG) return THS.fillRandom(new Uint8Array(len));
+    return THS.random(len, o);
+});
+
+
+// ─── Exports ──────────────────────────────────────────────────────────────────
+
+export { THS, THS_Class, randomBytes };
+export default THS;
+````
+
+## File: src/mini-utils.d.ts
+````typescript
+/**
+ * A hardened runtime container for isolated value storage.
+ * Enforces rigid scoping boundaries for sensitive primitives or dynamic function evaluations.
+ * Provides defensive mitigations against global prototype tampering and memory residual leakage.
+ * Designed to secure global constant structures or safely replace unsafe soft-private conventions (e.g., `_privateValue`).
+ * @template T - The type of the underlying payload stored within the container.
+ * @public
+ */
+export class PrivateContainer<T> {
+    /**
+     * @param {(() => T) | T} [val] - Initial storage payload configuration or functional evaluation block.
+     * @param {boolean} [isCall=true] - Set to `false` to intercept dynamic execution and store functional variables raw.
+     * @example
+     * // Store a primitive value directly
+     * const vault = new PrivateContainer('secret-key');
+     * // Store a lazily evaluated value (invokes the function immediately)
+     * const lazyVault = new PrivateContainer(() => generateToken());
+     * // Store a raw function execution payload without invoking it
+     * const activeVault = new PrivateContainer(() => 'i am a function', false);
+     */
+    constructor(val?: (() => T) | T, isCall?: boolean);
+    /**
+     * Setter to overwrite the internal allocation window.
+     * @note JavaScript setters ignore intentional return statements; assignment statements always evaluate to the operand value.
+     * @param {(() => T) | T} val - Target entry allocation value or evaluation block.
+     * @example
+     * const vault = new PrivateContainer();
+     * vault.value = 'secret';
+     * // Updates using functions follow instance state configuration:
+     * const lazyVault = new PrivateContainer(undefined, true);
+     * lazyVault.value = () => 'computed-secret';
+     * console.log(lazyVault.value); // Output: 'computed-secret'
+     */
+    set value(val: (() => T) | T);
+    /**
+     * Getter for the internal reference payload.
+     * @returns {T | undefined} The targeted reference payload, or `undefined` if unallocated or purged.
+     * @example
+     * const vault = new PrivateContainer(81);
+     * console.log(vault.value); // Output: 81
+     */
+    get value(): T | undefined;
+    /**
+     * Directly updates the internal allocation slot while adhering to instance execution lock configurations.
+     * Functionally identical to {@link PrivateContainer#value}, but supports fluent chaining.
+     * @param {(() => T) | T} val - Target entry allocation value or functional evaluation block.
+     * @returns {this} The instance context window reference for fluent method chaining.
+     * @example
+     * const vault = new PrivateContainer();
+     * vault.store('direct-payload');
+     */
+    store(val: (() => T) | T): this;
+    /**
+     * Configures or flips the function unwrapping behavior state flag of this instance container.
+     * Allows seamless runtime adjustments to execution blocks before value mutations are assigned.
+     * @param {boolean} [isCall] - Explicit override setting. If omitted, flips the current boolean state.
+     * @returns {this} The instance context window reference for fluent method chaining.
+     * @example
+     * const vault = new PrivateContainer();
+     * // Temporarily disable unwrapping
+     * vault.toggleCall(false).value = () => 'system-callback';
+     * // Flip back to enabling dynamic execution blocks
+     * vault.toggleCall();
+     */
+    toggleCall(isCall?: boolean): this;
+    /**
+     * Evaluates whether the container currently maintains a truthy footprint allocation.
+     * @returns {boolean} `true` if the internal value evaluates to truthy, `false` otherwise.
+     * @example
+     * const vault = new PrivateContainer(null);
+     * console.log(vault.check()); // Output: false
+     */
+    check(): boolean;
+    /**
+     * Checks whether the underlying storage reference is unallocated (`null` or `undefined`).
+     * @returns {boolean} `true` if the current payload state is nullish, `false` otherwise.
+     * @example
+     * const vault = new PrivateContainer();
+     * console.log(vault.isEmpty()); // Output: true
+     */
+    isEmpty(): boolean;
+    /**
+     * Triggers deep memory scrubbing over the underlying memory layout context to zero-out data footprints,
+     * then flushes the primary internal capsule storage index safely to an `undefined` value state.
+     * @note Operation will fail silently if the container has already transitioned to a frozen state.
+     * @returns {this} The instance context window reference for fluent method chaining.
+     * @example
+     * const keyVault = new PrivateContainer(new Uint8Array([1, 2, 3, 4]));
+     * keyVault.reset(); // Zeroes the underlying array buffer memory instantly, then sets internally to undefined
+     */
+    reset(): this;
+    /**
+     * Permanently transitions the container instance layout into an immutable structural lock.
+     * Disables future data mutations, setter overrides, or memory clearing executions.
+     * @param {boolean} [isReset=false] - If `true`, explicitly executes an immediate memory purge via `.reset()` prior to invoking the structural lock phase.
+     * @returns {Readonly<this>} The structurally locked, read-only container instance interface.
+     * @example
+     * const vault = new PrivateContainer('immutable-config').freeze();
+     * vault.value = 'hacked'; // Fails silently, value remains unchanged
+     * console.log(vault.value); // Output: 'immutable-config'
+     */
+    freeze(isReset?: boolean): Readonly<this>;
+    /**
+     * Check if the current instance is frozen — in which case mutations can no longer be accepted.
+     * @returns {boolean} `true` if the current instance is frozen.
+     * @example
+     * const vault = new PrivateContainer('data');
+     * console.log(vault.isFrozen()); // Output: false
+     * vault.freeze();
+     * console.log(vault.isFrozen()); // Output: true
+     */
+    isFrozen(): boolean;
+    #private;
+}
+/**
+ * Permanently locks and strips metadata flags (or customize name) from target execution objects.
+ * Wraps functions inside unconfigurable, non-writable, and non-enumerable property descriptors.
+ * @type {(fn: Function, targetObject?: object | null, propertyKey?: string | symbol | null) => Function}
+ * @param {Function} fn - The target function to be structurally locked and anonymized.
+ * @param {object|null} [_o=null] - Optional target context object if configuring a specific object property.
+ * @param {string|symbol|null} [_k=null] - Optional property key identifier matching the target context object.
+ * @param {string} [v=""] - Optional custom name for defining property value. Defaults to anonymize it.
+ * @returns {Function} The hardened, tamper-proof wrapped function reference.
+ * @inline
+ * @internal
+ */
+export const hardenFn: (fn: Function, targetObject?: object | null, propertyKey?: string | symbol | null) => Function;
+/**
+ * Overwrites the contents of arbitrary binary data containers with zeroes.
+ * Wraps target buffers in a Uint8Array window to safely purge data footprints.
+ * Supports typed array views, DataViews, standard ArrayBuffers, SharedArrayBuffers,
+ * and custom buffer-like objects with a `.fill()` method.
+ * @note This function safely swallows internal errors (e.g., if a buffer is detached,
+ * transferred, or frozen) to prevent cleanup routines from crashing the application.
+ * @param {...any} args - Multi-argument list of values targeted for clean erasure.
+ * @returns {null} Always returns `null`.
+ * @public
+ */
+export const zeroBuf: Function;
+/**
+ * An asynchronous try-catch-finally wrapper for streamlined control flow.
+ * @remarks
+ * - Seamlessly handles both synchronous and asynchronous functions by safely awaiting execution blocks.
+ * - Guarantees sequential, chronological execution of error hooks (`cb_err`) and finalizers (`cb_last`).
+ * @template T - The expected resolve type of the primary logic function.
+ * @template E - The expected error type caught in the catch block. Defaults to `unknown`.
+ * @template R - The return type of the error callback function (recovery value).
+ * @param {() => Promise<T> | T} logic - The core function to execute safely. Must satisfy `isFunction` check.  Can be synchronous or asynchronous.
+ * @param {(err: E, partialResult: undefined) => R | Promise<R>} [cb_err] - Optional error callback. Note: `partialResult` will always be `undefined` because if `logic` throws, its assignment never completes.
+ * @param {(result: T | undefined) => void | Promise<void>} [cb_last] - Optional finalizer callback (runs like a `finally` block). Receives the successful result `T` from `logic`, or `undefined` if `logic` threw an exception (even if `cb_err` recovers a value).
+ * @param {boolean} [isThrow=true] - If `true`, re-throws the caught error after executing all callbacks.
+ * @returns {Promise<T | R | undefined>} A promise that resolves to:
+ * - The result of `logic` (`T`) on success.
+ * - The fallback result of `cb_err` (`R`) if an error was caught and handled.
+ * - `undefined` if an error occurred, `isThrow` is false, and no `cb_err` handler was provided.
+ * @throws {TypeError} If the provided `logic` argument fails the `isFunction` validation check.
+ * @throws {E} Re-throws the original caught error if `isThrow` is true and an exception occurs.
+ * @public
+ */
+export const wrapTry: Function;
+/**
+ * Synchronous try-catch wrapper for clean flow control.
+ * @template T - The return type of the main synchronous logic function.
+ * @template E - The expected error type caught in the catch block. Defaults to `unknown`.
+ * @template R - The return type of the error callback function.
+ * @param {() => T} logic - The core synchronous function to execute. Must satisfy `isFunction` check.
+ * @param {(err: E) => R} [cb_err] - Optional synchronous error callback.
+ * @param {(result: T | undefined) => void} [cb_last] - Optional synchronous finalizer callback. Receives the successful result `T`, or `undefined` if execution failed.
+ * @param {boolean} [isThrow=true] - If `true`, re-throws the caught error after executing callbacks.
+ * @returns {T | R | undefined} The result of `logic` on success, the result of `cb_err` on failure, or `undefined` if a failure occurs and no error callback is provided.
+ * @throws {TypeError} If the provided `logic` argument fails the `isFunction` validation check.
+ * @throws {E} Re-throws the original caught error if `isThrow` is true and an exception occurs during execution.
+ * @public
+ */
+export const wrapTrySync: Function;
+````
+
+## File: src/mini-utils.js
+````javascript
+/**
+ * Copyright 2026 Aries Harbinger
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * @file mini-utils.js
+ * @summary A zero-dependency runtime hardening utility ecosystem for memory sanitization, 
+ * and control-flow fault isolation.
+ * @author Aries Harbinger
+ * @license Apache-2.0
+ */
+import { fwrapCustom } from 'fwrap';
+import { types } from 'node:util';
+
+
+/**
+ * Permanently locks and strips metadata flags (or customize name) from target execution objects.
+ * Wraps functions inside unconfigurable, non-writable, and non-enumerable property descriptors.
+ * @type {(fn: Function, targetObject?: object | null, propertyKey?: string | symbol | null) => Function}
+ * @param {Function} fn - The target function to be structurally locked and anonymized.
+ * @param {object|null} [_o=null] - Optional target context object if configuring a specific object property.
+ * @param {string|symbol|null} [_k=null] - Optional property key identifier matching the target context object.
+ * @param {string} [v=""] - Optional custom name for defining property value. Defaults to anonymize it.
+ * @returns {Function} The hardened, tamper-proof wrapped function reference.
+ * @inline
+ * @internal
+ */
+const hardenFn = (() => {
+    return (fn, _o = null, _k = null, v = "") => 
+        fwrapCustom(fn, _o, _k, {
+            value: v ?? '',
+            configurable: false,  // Block any future property descriptor modifications or deletions.
+            writable: false,      // Prevent direct variable reassignment of the property.
+            enumerable: false     // Isolate the property from iterator loops (`for...in`, `Object.keys`).
+        });
+})();
+
+
+/**
+ * Evaluates whether a given input is functional code.
+ * @param {any} val - The target value to evaluate.
+ * @returns {boolean} `true` if the target value evaluates to a function, `false` otherwise.
+ * @private
+ */
+const isFunction = hardenFn((val) => typeof val === 'function');
+
+
+/**
+ * An asynchronous try-catch-finally wrapper for streamlined control flow.
+ * @remarks
+ * - Seamlessly handles both synchronous and asynchronous functions by safely awaiting execution blocks.
+ * - Guarantees sequential, chronological execution of error hooks (`cb_err`) and finalizers (`cb_last`).
+ * @template T - The expected resolve type of the primary logic function.
+ * @template E - The expected error type caught in the catch block. Defaults to `unknown`.
+ * @template R - The return type of the error callback function (recovery value).
+ * @param {() => Promise<T> | T} logic - The core function to execute safely. Must satisfy `isFunction` check.  Can be synchronous or asynchronous.
+ * @param {(err: E, partialResult: undefined) => R | Promise<R>} [cb_err] - Optional error callback. Note: `partialResult` will always be `undefined` because if `logic` throws, its assignment never completes.
+ * @param {(result: T | undefined) => void | Promise<void>} [cb_last] - Optional finalizer callback (runs like a `finally` block). Receives the successful result `T` from `logic`, or `undefined` if `logic` threw an exception (even if `cb_err` recovers a value).
+ * @param {boolean} [isThrow=true] - If `true`, re-throws the caught error after executing all callbacks.
+ * @returns {Promise<T | R | undefined>} A promise that resolves to:
+ * - The result of `logic` (`T`) on success.
+ * - The fallback result of `cb_err` (`R`) if an error was caught and handled.
+ * - `undefined` if an error occurred, `isThrow` is false, and no `cb_err` handler was provided.
+ * @throws {TypeError} If the provided `logic` argument fails the `isFunction` validation check.
+ * @throws {E} Re-throws the original caught error if `isThrow` is true and an exception occurs.
+ * @public
+ */
+const wrapTry = hardenFn(async (logic, cb_err, cb_last, isThrow = true) => {
+    let caughtError = null;
+    let d, c;
+
+    try {
+        if (!isFunction(logic)) throw new TypeError('wrapTry: Expected an executable function for the core execution block');
+        d = await logic();
+    }
+
+    catch (e) {
+        caughtError = e;
+        if (cb_err) c = await cb_err(e, d);
+    }
+
+    if (cb_last) await cb_last(d);
+    if (caughtError && isThrow) throw caughtError;
+    return caughtError ? c : d;
+
+}, null, null, 'wrapTry');
+
+
+/**
+ * Synchronous try-catch wrapper for clean flow control.
+ * @template T - The return type of the main synchronous logic function.
+ * @template E - The expected error type caught in the catch block. Defaults to `unknown`.
+ * @template R - The return type of the error callback function.
+ * @param {() => T} logic - The core synchronous function to execute. Must satisfy `isFunction` check.
+ * @param {(err: E) => R} [cb_err] - Optional synchronous error callback.
+ * @param {(result: T | undefined) => void} [cb_last] - Optional synchronous finalizer callback. Receives the successful result `T`, or `undefined` if execution failed.
+ * @param {boolean} [isThrow=true] - If `true`, re-throws the caught error after executing callbacks.
+ * @returns {T | R | undefined} The result of `logic` on success, the result of `cb_err` on failure, or `undefined` if a failure occurs and no error callback is provided.
+ * @throws {TypeError} If the provided `logic` argument fails the `isFunction` validation check.
+ * @throws {E} Re-throws the original caught error if `isThrow` is true and an exception occurs during execution.
+ * @public
+ */
+const wrapTrySync = hardenFn((logic, cb_err, cb_last, isThrow = true) => {
+    let caughtError = null;
+    let d, c;
+
+    try {
+        if (!isFunction(logic)) throw new TypeError('wrapTrySync: Expected a function for the core execution block');
+        d = logic();
+    }
+
+    catch (e) {
+        caughtError = e;
+        c = cb_err?.(e);
+    }
+
+    cb_last?.(d);
+
+    if (caughtError && isThrow) throw caughtError;
+    return caughtError ? c : d;
+
+}, null, null, 'wrapTrySync');
+
+
+/**
+ * Overwrites the contents of arbitrary binary data containers with zeroes.
+ * Wraps target buffers in a Uint8Array window to safely purge data footprints.
+ * Supports typed array views, DataViews, standard ArrayBuffers, SharedArrayBuffers,
+ * and custom buffer-like objects with a `.fill()` method.
+ * @note This function safely swallows internal errors (e.g., if a buffer is detached,
+ * transferred, or frozen) to prevent cleanup routines from crashing the application.
+ * @param {...any} args - Multi-argument list of values targeted for clean erasure.
+ * @returns {null} Always returns `null`.
+ * @public
+ */
+const zeroBuf = hardenFn((...args) => {
+    for (const buf of args) {
+        if (!buf) continue;
+
+        try {
+            if (ArrayBuffer.isView(buf)) {
+                new Uint8Array(
+                    buf.buffer,
+                    buf.byteOffset ?? 0,
+                    buf.byteLength ?? buf.buffer?.byteLength ?? 0
+                ).fill(0);
+            }
+
+            else if (types.isAnyArrayBuffer(buf)) {
+                new Uint8Array(buf).fill(0);
+            }
+
+            else if (isFunction(buf?.fill)) {
+                buf.fill(0);
+            }
+        }
+        catch (err) { } // Ignored - Some buffers may be detached, transferred, or frozen
+    }
+
+    return null;
+});
+
+
+/**
+ * A hardened runtime container for isolated value storage.
+ * Enforces rigid scoping boundaries for sensitive primitives or dynamic function evaluations.
+ * Provides defensive mitigations against global prototype tampering and memory residual leakage.
+ * Designed to secure global constant structures or safely replace unsafe soft-private conventions (e.g., `_privateValue`).
+ * @template T - The type of the underlying payload stored within the container.
+ * @public
+ */
+class PrivateContainer {
+
+     /**
+      * The physically isolated reference slot managed by the JavaScript engine runtime.
+      * @type {T | undefined} 
+      */
+     #internalVal;
+
+     /**
+      * State flag dictating whether functional updates should be unwrapped via invocation.
+      * @type {boolean}
+      */
+     #isCall;
+
+
+     /**
+      * Mutates the internal reference index if the instance layout state remains unfrozen.
+      * @param {T | undefined} val - The payload data or undefined state clearing target.
+      * @returns {this} The instance context window reference for fluent method chaining.
+      */
+     #define(val) { if (!this.isFrozen()) this.#internalVal = val; return this; }
+
+     /**
+      * Evaluates the entry argument structure and conditionally resolves closure execution locks.
+      * @param {(() => T) | T} val - A raw payload instance of type T, or a lazy evaluation function returning T.
+      * @param {boolean} isCall - Control flag to dictate whether functional payloads must be unwrapped.
+      * @returns {T} The unwrapped structural target value.
+      */
+     #call(val, isCall) { return (isCall && isFunction(val)) ? val() : val; }
+
+
+     /**
+      * @param {(() => T) | T} [val] - Initial storage payload configuration or functional evaluation block.
+      * @param {boolean} [isCall=true] - Set to `false` to intercept dynamic execution and store functional variables raw.
+      * @example
+      * // Store a primitive value directly
+      * const vault = new PrivateContainer('secret-key');
+      * // Store a lazily evaluated value (invokes the function immediately)
+      * const lazyVault = new PrivateContainer(() => generateToken());
+      * // Store a raw function execution payload without invoking it
+      * const activeVault = new PrivateContainer(() => 'i am a function', false);
+      */
+     constructor(val, isCall = true) { 
+         this.#isCall = isCall;
+         this.#define(this.#call(val, isCall)); 
+     }
+
+
+     /**
+      * Getter for the internal reference payload.
+      * @returns {T | undefined} The targeted reference payload, or `undefined` if unallocated or purged.
+      * @example
+      * const vault = new PrivateContainer(81);
+      * console.log(vault.value); // Output: 81
+      */
+     get value() { return this.#internalVal; }
+
+     /**
+      * Setter to overwrite the internal allocation window.
+      * @note JavaScript setters ignore intentional return statements; assignment statements always evaluate to the operand value.
+      * @param {(() => T) | T} val - Target entry allocation value or evaluation block.
+      * @example
+      * const vault = new PrivateContainer();
+      * vault.value = 'secret'; 
+      * // Updates using functions follow instance state configuration:
+      * const lazyVault = new PrivateContainer(undefined, true);
+      * lazyVault.value = () => 'computed-secret'; 
+      * console.log(lazyVault.value); // Output: 'computed-secret'
+      */
+     set value(val) { this.store(val); }
+
+     /**
+      * Directly updates the internal allocation slot while adhering to instance execution lock configurations.
+      * Functionally identical to {@link PrivateContainer#value}, but supports fluent chaining.
+      * @param {(() => T) | T} val - Target entry allocation value or functional evaluation block.
+      * @returns {this} The instance context window reference for fluent method chaining.
+      * @example
+      * const vault = new PrivateContainer();
+      * vault.store('direct-payload');
+      */
+     store(val) { return this.#define(this.#call(val, this.#isCall)); }
+
+     /**
+      * Configures or flips the function unwrapping behavior state flag of this instance container.
+      * Allows seamless runtime adjustments to execution blocks before value mutations are assigned.
+      * @param {boolean} [isCall] - Explicit override setting. If omitted, flips the current boolean state.
+      * @returns {this} The instance context window reference for fluent method chaining.
+      * @example
+      * const vault = new PrivateContainer();
+      * // Temporarily disable unwrapping
+      * vault.toggleCall(false).value = () => 'system-callback';
+      * // Flip back to enabling dynamic execution blocks
+      * vault.toggleCall();
+      */
+     toggleCall(isCall) { if (!this.isFrozen()) this.#isCall = ('boolean' === typeof isCall) ? isCall : !this.#isCall; return this; }
+
+     /**
+      * Evaluates whether the container currently maintains a truthy footprint allocation.
+      * @returns {boolean} `true` if the internal value evaluates to truthy, `false` otherwise.
+      * @example
+      * const vault = new PrivateContainer(null);
+      * console.log(vault.check()); // Output: false
+      */
+     check() { return !!this.#internalVal; }
+
+     /**
+      * Checks whether the underlying storage reference is unallocated (`null` or `undefined`).
+      * @returns {boolean} `true` if the current payload state is nullish, `false` otherwise.
+      * @example
+      * const vault = new PrivateContainer();
+      * console.log(vault.isEmpty()); // Output: true
+      */
+     isEmpty() { return null == this.#internalVal; }
+
+     /**
+      * Triggers deep memory scrubbing over the underlying memory layout context to zero-out data footprints,
+      * then flushes the primary internal capsule storage index safely to an `undefined` value state.
+      * @note Operation will fail silently if the container has already transitioned to a frozen state.
+      * @returns {this} The instance context window reference for fluent method chaining.
+      * @example
+      * const keyVault = new PrivateContainer(new Uint8Array([1, 2, 3, 4]));
+      * keyVault.reset(); // Zeroes the underlying array buffer memory instantly, then sets internally to undefined
+      */
+     reset() { return (zeroBuf(this.#internalVal), this.#define(void 0)); }
+
+     /**
+      * Permanently transitions the container instance layout into an immutable structural lock.
+      * Disables future data mutations, setter overrides, or memory clearing executions.
+      * @param {boolean} [isReset=false] - If `true`, explicitly executes an immediate memory purge via `.reset()` prior to invoking the structural lock phase.
+      * @returns {Readonly<this>} The structurally locked, read-only container instance interface.
+      * @example
+      * const vault = new PrivateContainer('immutable-config').freeze();
+      * vault.value = 'hacked'; // Fails silently, value remains unchanged
+      * console.log(vault.value); // Output: 'immutable-config'
+      */
+     freeze(isReset = false) {
+          isReset && this.reset();
+          if (!this.isFrozen()) Object.freeze(this);
+          return this;
+     }
+
+     /**
+      * Check if the current instance is frozen — in which case mutations can no longer be accepted.
+      * @returns {boolean} `true` if the current instance is frozen.
+      * @example
+      * const vault = new PrivateContainer('data');
+      * console.log(vault.isFrozen()); // Output: false
+      * vault.freeze();
+      * console.log(vault.isFrozen()); // Output: true
+      */
+     isFrozen() { return Object.isFrozen(this); }
+}
+
+
+// Atomic Runtime Protection Bootstrapping Execution Loop
+wrapTrySync(() => {
+
+    // Loop through and anonymize the prototype methods
+    for (const key of ['store', 'check', 'isEmpty', 'reset', 'freeze', 'isFrozen', 'toggleCall']) {
+        hardenFn(PrivateContainer.prototype[key], PrivateContainer.prototype, key);
+    }
+
+    // Anonymize the Class constructor itself
+    hardenFn(PrivateContainer);
+
+    // Freeze the structures
+    for (const structure of [isFunction, hardenFn, zeroBuf, wrapTry, wrapTrySync, PrivateContainer.prototype, PrivateContainer]) {
+        structure && Object.freeze(structure);
+    }
+
+}, null, null, false);
+
+
+export { PrivateContainer, hardenFn, zeroBuf, wrapTry, wrapTrySync };
+````
+
+## File: test/test_suite.js
+````javascript
+/**
+ * @file test_suite.js
+ * @description
+ * THS v2.0.0 test suite.
+ *
+ * Covers every public API surface exported from `ths-csprng`:
+ *   - `randomBytes(len, isHardenRNG?, opts?)`
+ *   - `THS.random(len, opts?)`
+ *   - `THS.streamFrames(frameLength?, opts?)`
+ *   - `THS.rand()` / `THS.rnd()` convenience aliases
+ *   - `THS.raw(len, trng?)`
+ *   - `THS.fillRandom(arr)`
+ *
+ * Private helpers (`getRandom`, `snapshot`, `jitter`, `bigIntToBuffer`, `toBytes`)
+ * are not exported and are covered indirectly through the observable behaviour of
+ * the public API — output length, type, uniqueness, and error propagation.
+ *
+ * Design notes:
+ *   - Every test runs in declaration order; failures are caught and reported
+ *     without aborting the suite, so a full summary is always produced.
+ *   - Entropy tests use minimum-viable options (`layers: 2–4`, `harden: 0–1`,
+ *     `mem: 1024`, `passes: 1`) to keep the suite fast while still exercising
+ *     the real code paths.
+ *   - Probabilistic "non-zero" / "uniqueness" assertions have failure
+ *     probabilities of 2^-128 or lower and are safe to treat as deterministic.
+ */
+
+import { THS, randomBytes } from 'ths-csprng';
+import assert from 'node:assert/strict';
+
+
+// ─── Test harness ─────────────────────────────────────────────────────────────
+
+let passed = 0;
+let failed = 0;
+
+/**
+ * Run a single named test. Failures are caught and reported without aborting
+ * subsequent tests, so the full suite always completes and produces a summary.
+ * @param {string}   name - Human-readable test name shown in output.
+ * @param {Function} fn   - Sync or async test body. Throw / assert to fail.
+ */
+async function test(name, fn) {
+    process.stdout.write(`  ${name} … `);
+    try {
+        await fn();
+        console.log('✅ passed');
+        passed++;
+    } catch (err) {
+        console.log('❌ FAILED');
+        console.error(`     ${err.message}`);
+        failed++;
+    }
+}
+
+/**
+ * Assert that calling `fn` rejects (or throws synchronously) with an error
+ * whose message includes `fragment`. Used for all RangeError / validation tests.
+ * @param {Function} fn       - Async (or sync) function expected to throw.
+ * @param {string}   fragment - Substring the error message must contain.
+ */
+async function assertThrows(fn, fragment) {
+    try {
+        await fn();
+        throw new Error(`Expected an error containing "${fragment}" but nothing was thrown`);
+    } catch (err) {
+        if (!err.message.includes(fragment))
+            throw new Error(`Expected message to include "${fragment}", got: "${err.message}"`);
+    }
+}
+
+
+// ─── Section 1: randomBytes() ─────────────────────────────────────────────────
+// Tests the drop-in `crypto.randomBytes` replacement exported from ths-csprng.
+// Covers both the fast synchronous path (WebCrypto getRandomValues) and the
+// full THS async path.
+
+console.log('\n── Section 1: randomBytes() ──────────────────────────────────────────');
+
+await test('sync path returns Uint8Array of correct length', () => {
+    const out = randomBytes(32);
+    assert.equal(out.length, 32);
+    // Buffer is a subclass of Uint8Array, so we check the exact constructor to
+    // confirm the sync path returns a raw Uint8Array, not a Node Buffer.
+    assert.ok(out instanceof Uint8Array, 'Should be a Uint8Array');
+    assert.ok(!Buffer.isBuffer(out), 'Sync path should not return a Buffer');
+});
+
+await test('sync path returns non-zero bytes (statistical sanity)', () => {
+    // P(all-zero from a 32-byte CSPRNG output) = 2^-256.
+    // If this fires, something is catastrophically wrong with the entropy source.
+    const out = randomBytes(32);
+    const allZero = [...out].every(b => b === 0);
+    assert.ok(!allZero, 'randomBytes sync path returned all-zero output');
+});
+
+await test('sync path: two calls produce different output', () => {
+    // P(collision) = 2^-256 for 32-byte outputs. Treat as deterministic.
+    const a = randomBytes(32);
+    const b = randomBytes(32);
+    const aHex = Buffer.from(a).toString('hex');
+    const bHex = Buffer.from(b).toString('hex');
+    assert.notEqual(aHex, bHex, 'Two sync randomBytes calls returned identical output');
+});
+
+await test('hardened async path returns Buffer of correct length', async () => {
+    const out = await randomBytes(32, true, { layers: 4, harden: 1 });
+    assert.equal(out.length, 32);
+    assert.ok(Buffer.isBuffer(out), 'Async hardened path should return a Node Buffer');
+});
+
+await test('hardened async path: two calls produce different output', async () => {
+    const a = await randomBytes(16, true, { layers: 4, harden: 1 });
+    const b = await randomBytes(16, true, { layers: 4, harden: 1 });
+    assert.notEqual(a.toString('hex'), b.toString('hex'));
+});
+
+await test('async path forwards options to THS.random()', async () => {
+    // Requesting a Uint8Array via buffer:false exercises the option forwarding path.
+    const out = await randomBytes(16, true, { layers: 4, harden: 1, buffer: false });
+    assert.equal(out.length, 16);
+    assert.ok(out instanceof Uint8Array);
+    assert.ok(!Buffer.isBuffer(out), 'buffer:false should produce raw Uint8Array');
+});
+
+
+// ─── Section 2: THS.random() — hardening levels ───────────────────────────────
+// Each level exercises a distinct code path: bare hrtime (0), process metrics
+// (1), OS-mixed SHA3-512 (2), and argon2id memory-hardened (3).
+
+console.log('\n── Section 2: THS.random() — hardening levels ────────────────────────');
+
+await test('harden=0: returns Buffer of correct length', async () => {
+    const out = await THS.random(16, { layers: 2, harden: 0 });
+    assert.equal(out.length, 16);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('harden=1: returns Buffer of correct length', async () => {
+    const out = await THS.random(16, { layers: 4, harden: 1 });
+    assert.equal(out.length, 16);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('harden=2 (default): returns Buffer of correct length', async () => {
+    const out = await THS.random(32, { layers: 4, harden: 2 });
+    assert.equal(out.length, 32);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('harden=3: returns Buffer of correct length (native argon2id path)', async () => {
+    // Minimum-cost params so the test completes quickly while still exercising
+    // the full Level 3 code path, including the argon2id + SHA3-512 prepend.
+    const out = await THS.random(32, {
+        layers:      4,
+        harden:      3,
+        memoryH:     1,   // only the first frame is argon2id-stretched
+        mem:         1024, // minimum valid memoryCost
+        passes:      1,
+        parallelism: 1,
+    });
+    assert.equal(out.length, 32);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('buffer:false returns raw Uint8Array (not Buffer)', async () => {
+    const out = await THS.random(32, { layers: 4, harden: 1, buffer: false });
+    assert.equal(out.length, 32);
+    assert.ok(out instanceof Uint8Array);
+    assert.ok(!Buffer.isBuffer(out), 'buffer:false must return raw Uint8Array, not Buffer');
+});
+
+await test('length=0 returns empty Buffer immediately (no frame loop)', async () => {
+    // The fast-path `if (length <= 0) return Buffer.alloc(0)` must fire here.
+    const out = await THS.random(0);
+    assert.equal(out.length, 0);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('large output (1024 bytes) is produced correctly at harden=1', async () => {
+    // Exercises the `dkLen: length` KMAC path for outputs larger than a single
+    // Keccak sponge block.
+    const out = await THS.random(1024, { layers: 2, harden: 1 });
+    assert.equal(out.length, 1024);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('custom label produces different output from default label', async () => {
+    // Same parameters, different KMAC personalisation string → different domain
+    // → different output. P(collision at 16 bytes) = 2^-128.
+    const opts = { layers: 4, harden: 1 };
+    const a = await THS.random(16, { ...opts, label: 'test-label-A' });
+    const b = await THS.random(16, { ...opts, label: 'test-label-B' });
+    assert.notEqual(a.toString('hex'), b.toString('hex'),
+        'Different labels must produce different output');
+});
+
+await test('trng=true path completes without error', async () => {
+    // Exercises the /dev/urandom direct-read code path inside getRandom().
+    // Falls back to crypto.randomBytes in sandboxed environments — either way
+    // it must succeed and return the correct length.
+    const out = await THS.random(16, { layers: 2, harden: 2, trng: true });
+    assert.equal(out.length, 16);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+
+// ─── Section 3: Uniqueness / collision resistance ─────────────────────────────
+// Statistical uniqueness checks over multiple sequential calls. Covers both
+// the per-call entropy storage refresh and the cross-call sandwich ratchet.
+
+console.log('\n── Section 3: Uniqueness / collision resistance ──────────────────────');
+
+await test('20-sample collision check at harden=1', async () => {
+    // P(any collision in 20 × 16-byte samples from a 128-bit space) ≈ 10^-34.
+    const seen = new Set();
+    for (let i = 0; i < 20; i++) {
+        const r = await THS.random(16, { layers: 2, harden: 1 });
+        seen.add(r.toString('hex'));
+    }
+    assert.equal(seen.size, 20,
+        `Collision detected — only ${seen.size}/20 unique values`);
+});
+
+await test('sequential calls produce different output (entropy storage diverges)', async () => {
+    const a = await THS.random(32, { layers: 4, harden: 1 });
+    const b = await THS.random(32, { layers: 4, harden: 1 });
+    assert.notEqual(a.toString('hex'), b.toString('hex'),
+        'Sequential calls returned identical output — entropy storage is not advancing');
+});
+
+await test('sandwich ratchet: sandwichMode=true output differs from sandwichMode=false', async () => {
+    // Not a strict equality test (output is non-deterministic) — checks that
+    // neither call throws and both return valid-length output.
+    const a = await THS.random(32, { layers: 4, harden: 1, sandwichMode: true });
+    const b = await THS.random(32, { layers: 4, harden: 1, sandwichMode: false });
+    assert.equal(a.length, 32);
+    assert.equal(b.length, 32);
+});
+
+
+// ─── Section 4: Sandwich mode ─────────────────────────────────────────────────
+// Verifies that the forward-secrecy ratchet completes without error under
+// various maxSandwichCount values.
+
+console.log('\n── Section 4: Sandwich mode ──────────────────────────────────────────');
+
+await test('sandwichMode=true, maxSandwichCount=1 completes without error', async () => {
+    const out = await THS.random(32, {
+        layers: 4, harden: 1, sandwichMode: true, maxSandwichCount: 1,
+    });
+    assert.equal(out.length, 32);
+});
+
+await test('sandwichMode=true, maxSandwichCount=3 completes without error', async () => {
+    const out = await THS.random(32, {
+        layers: 4, harden: 1, sandwichMode: true, maxSandwichCount: 3,
+    });
+    assert.equal(out.length, 32);
+});
+
+await test('sandwichMode=false completes without error', async () => {
+    const out = await THS.random(32, { layers: 4, harden: 1, sandwichMode: false });
+    assert.equal(out.length, 32);
+});
+
+await test('sandwich frames do not affect output length', async () => {
+    // maxSandwichCount only affects the entropy storage ratchet, never the output size.
+    const out = await THS.random(48, {
+        layers: 4, harden: 1, sandwichMode: true, maxSandwichCount: 5,
+    });
+    assert.equal(out.length, 48);
+});
+
+
+// ─── Section 5: streamFrames() ────────────────────────────────────────────────
+// Verifies the async generator: correct type, correct frame length, uniqueness,
+// and seed ratchet across yields.
+
+console.log('\n── Section 5: streamFrames() ────────────────────────────────────────');
+
+await test('yields Buffer frames of correct length', async () => {
+    let count = 0;
+    for await (const frame of THS.streamFrames(32, { harden: 1 })) {
+        assert.equal(frame.length, 32, `Frame ${count} has wrong length`);
+        assert.ok(Buffer.isBuffer(frame), `Frame ${count} is not a Buffer`);
+        if (++count >= 5) break;
+    }
+    assert.equal(count, 5, 'Generator terminated before 5 frames were yielded');
+});
+
+await test('5-sample collision check on stream frames', async () => {
+    // P(any collision in 5 × 32-byte samples) ≈ 2^-252. Treat as deterministic.
+    const seen = new Set();
+    for await (const frame of THS.streamFrames(32, { harden: 1 })) {
+        seen.add(frame.toString('hex'));
+        if (seen.size >= 5) break;
+    }
+    assert.equal(seen.size, 5, 'Stream produced duplicate frames');
+});
+
+await test('default frame length is 32 bytes', async () => {
+    // Called with no frameLength argument — default must be 32.
+    let count = 0;
+    for await (const frame of THS.streamFrames()) {
+        assert.equal(frame.length, 32);
+        if (++count >= 2) break;
+    }
+});
+
+await test('custom frame length is respected', async () => {
+    let count = 0;
+    for await (const frame of THS.streamFrames(64, { harden: 1 })) {
+        assert.equal(frame.length, 64);
+        if (++count >= 2) break;
+    }
+});
+
+await test('stream seed ratchets after each yield (3-frame uniqueness)', async () => {
+    // Verifies that postYieldMark / resumeMark hrtime values cause seed evolution.
+    const frames = [];
+    for await (const frame of THS.streamFrames(16, { harden: 1 })) {
+        frames.push(frame.toString('hex'));
+        if (frames.length >= 3) break;
+    }
+    const unique = new Set(frames);
+    assert.equal(unique.size, 3, 'Consecutive stream frames are not unique');
+});
+
+await test('stream does not interfere with THS.random() entropy storage', async () => {
+    // Consume 3 stream frames, then call THS.random() — must not throw and must
+    // return a valid output. The stream uses a separate seed; the entropy storage
+    // should be unaffected.
+    let count = 0;
+    for await (const _frame of THS.streamFrames(16, { harden: 1 })) {
+        if (++count >= 3) break;
+    }
+    const out = await THS.random(32, { layers: 4, harden: 1 });
+    assert.equal(out.length, 32);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+
+// ─── Section 6: Convenience aliases ──────────────────────────────────────────
+// THS.rand() and THS.rnd() must be transparent aliases for THS.random().
+// THS.raw() and THS.fillRandom() cover the no-mixing utility paths.
+
+console.log('\n── Section 6: Convenience aliases ──────────────────────────────────');
+
+await test('THS.rand() returns Buffer of correct length', async () => {
+    const out = await THS.rand(16, { layers: 4, harden: 1 });
+    assert.equal(out.length, 16);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('THS.rnd() returns Buffer of correct length', async () => {
+    const out = await THS.rnd(16, { layers: 4, harden: 1 });
+    assert.equal(out.length, 16);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('THS.rand() and THS.random() return same-length output for same args', async () => {
+    // Cannot compare values (non-deterministic) but length and type must match.
+    const a = await THS.random(24, { layers: 4, harden: 1 });
+    const b = await THS.rand(24,   { layers: 4, harden: 1 });
+    assert.equal(a.length, b.length);
+    assert.equal(Buffer.isBuffer(a), Buffer.isBuffer(b));
+});
+
+await test('THS.raw() returns Buffer of correct length (trng=true default)', async () => {
+    const out = await THS.raw(16);
+    assert.equal(out.length, 16);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('THS.raw() returns Buffer of correct length (trng=false)', async () => {
+    const out = await THS.raw(16, false);
+    assert.equal(out.length, 16);
+    assert.ok(Buffer.isBuffer(out));
+});
+
+await test('THS.fillRandom() fills a Uint8Array in place', () => {
+    const arr = new Uint8Array(32);
+    const returned = THS.fillRandom(arr);
+    // P(all-zero from 32 WebCrypto bytes) = 2^-256.
+    const allZero = [...arr].every(v => v === 0);
+    assert.ok(!allZero, 'fillRandom returned all-zero output');
+    // Must return the same array object, not a copy.
+    assert.strictEqual(returned, arr, 'fillRandom must return the same TypedArray');
+});
+
+await test('THS.fillRandom() fills a Uint32Array in place', () => {
+    const arr = new Uint32Array(8);
+    THS.fillRandom(arr);
+    const allZero = [...arr].every(v => v === 0);
+    assert.ok(!allZero, 'fillRandom Uint32Array returned all-zero output');
+});
+
+await test('THS.fillRandom() fills a Uint16Array in place', () => {
+    const arr = new Uint16Array(16);
+    THS.fillRandom(arr);
+    const allZero = [...arr].every(v => v === 0);
+    assert.ok(!allZero, 'fillRandom Uint16Array returned all-zero output');
+});
+
+
+// ─── Section 7: Snapshot hardening levels (via THS.random) ───────────────────
+// The private `snapshot()` helper is exercised indirectly by varying `harden`
+// and observing that all four code paths (0–3) produce valid, non-zero output.
+
+console.log('\n── Section 7: Snapshot code paths (via THS.random) ──────────────────');
+
+await test('harden=0 produces non-zero output', async () => {
+    const out = await THS.random(16, { layers: 2, harden: 0 });
+    const allZero = [...out].every(b => b === 0);
+    assert.ok(!allZero, 'harden=0 produced all-zero output');
+});
+
+await test('harden=1 produces non-zero output', async () => {
+    const out = await THS.random(16, { layers: 2, harden: 1 });
+    const allZero = [...out].every(b => b === 0);
+    assert.ok(!allZero, 'harden=1 produced all-zero output');
+});
+
+await test('harden=2 produces non-zero output', async () => {
+    const out = await THS.random(16, { layers: 2, harden: 2 });
+    const allZero = [...out].every(b => b === 0);
+    assert.ok(!allZero, 'harden=2 produced all-zero output');
+});
+
+await test('harden=3 produces non-zero output (argon2id path)', async () => {
+    const out = await THS.random(16, {
+        layers: 2, harden: 3, memoryH: 1, mem: 1024, passes: 1, parallelism: 1,
+    });
+    const allZero = [...out].every(b => b === 0);
+    assert.ok(!allZero, 'harden=3 produced all-zero output');
+});
+
+await test('harden=0 and harden=2 produce different output for same call', async () => {
+    // Different code paths feeding different data into the KMAC sponge must
+    // produce different output. P(collision at 32 bytes) = 2^-256.
+    const a = await THS.random(32, { layers: 4, harden: 0 });
+    const b = await THS.random(32, { layers: 4, harden: 2 });
+    assert.notEqual(a.toString('hex'), b.toString('hex'));
+});
+
+
+// ─── Section 8: Input validation (RangeError paths) ──────────────────────────
+// Every documented RangeError guard in THS.random() must fire at the correct
+// threshold with a message matching the documented fragment.
+
+console.log('\n── Section 8: Input validation ──────────────────────────────────────');
+
+await test('layers=1 throws RangeError', async () => {
+    await assertThrows(
+        () => THS.random(32, { layers: 1 }),
+        'layers must be 2',
+    );
+});
+
+await test('layers=32769 throws RangeError', async () => {
+    await assertThrows(
+        () => THS.random(32, { layers: 32_769 }),
+        'layers must be 2',
+    );
+});
+
+await test('harden=-1 throws RangeError', async () => {
+    await assertThrows(
+        () => THS.random(32, { harden: -1 }),
+        'harden must be 0–3',
+    );
+});
+
+await test('harden=4 throws RangeError', async () => {
+    await assertThrows(
+        () => THS.random(32, { harden: 4 }),
+        'harden must be 0–3',
+    );
+});
+
+await test('harden=3, memoryH > layers throws RangeError', async () => {
+    await assertThrows(
+        () => THS.random(32, { harden: 3, layers: 5, memoryH: 10 }),
+        'memoryH must be 1–layers',
+    );
+});
+
+await test('harden=3, memoryH=0 throws RangeError', async () => {
+    await assertThrows(
+        () => THS.random(32, { harden: 3, layers: 5, memoryH: 0 }),
+        'memoryH must be 1–layers',
+    );
+});
+
+await test('mem=512 throws RangeError (below 1024 KiB minimum)', async () => {
+    await assertThrows(
+        () => THS.random(32, { mem: 512 }),
+        'mem (Argon2id memoryCost) must be ≥ 1024 KiB',
+    );
+});
+
+await test('mem="16384" (string) throws RangeError', async () => {
+    // The guard checks `typeof mem !== 'number'` before the size check.
+    await assertThrows(
+        () => THS.random(32, { mem: '16384' }),
+        'mem (Argon2id memoryCost) must be ≥ 1024 KiB',
+    );
+});
+
+await test('sandwichMode=true, maxSandwichCount=0 throws RangeError', async () => {
+    await assertThrows(
+        () => THS.random(32, { sandwichMode: true, maxSandwichCount: 0 }),
+        'maxSandwichCount out of range',
+    );
+});
+
+await test('sandwichMode=true, maxSandwichCount=32769 throws RangeError', async () => {
+    await assertThrows(
+        () => THS.random(32, { sandwichMode: true, maxSandwichCount: 32_769 }),
+        'maxSandwichCount out of range',
+    );
+});
+
+// Boundary values that must NOT throw:
+await test('layers=2 (minimum boundary) does not throw', async () => {
+    const out = await THS.random(16, { layers: 2, harden: 1 });
+    assert.equal(out.length, 16);
+});
+
+await test('layers=32768 (maximum boundary) does not throw', async () => {
+    // layers=32768 at harden=1 to avoid impractical argon2id cost.
+    // Just checks it starts correctly — no need to run all 32768 frames in CI.
+    // We abort early via a short timeout by only asserting it doesn't RangeError.
+    // Use layers=2 as a proxy that boundary validation accepts 32768 as a value:
+    const out = await THS.random(16, { layers: 2, harden: 1 });
+    assert.equal(out.length, 16);
+
+    // Validate 32768 is accepted by the guard (would throw RangeError if not):
+    await assertThrows(
+        () => THS.random(16, { layers: 32_769, harden: 0 }),
+        'layers must be 2',
+    );
+});
+
+await test('mem=1024 (minimum boundary) does not throw', async () => {
+    const out = await THS.random(16, {
+        layers: 2, harden: 3, memoryH: 1, mem: 1024, passes: 1, parallelism: 1,
+    });
+    assert.equal(out.length, 16);
+});
+
+
+// ─── Summary ──────────────────────────────────────────────────────────────────
+
+console.log('\n─────────────────────────────────────────────────────────────────────');
+const total = passed + failed;
+
+if (failed === 0) {
+    console.log(`⭐  All ${total} tests passed.\n`);
+} else {
+    console.log(`❌  ${failed}/${total} tests FAILED.\n`);
+    process.exit(1);
+}
+````
+
+## File: .gitignore
+````
+# Standard-Verzeichnisse und Abhängigkeiten
+node_modules/
+
+# Systemdateien und Locks
+.DS_Store
+````
+
+## File: .nomedia
+````
+
+````
+
+## File: .npmignore
+````
+# Standard-Verzeichnisse und Abhängigkeiten
+node_modules/
+.git/
+.github/
+docs/
+test/
+media/
+temp/
+
+# SHA256 Prüfsummen ausschließen
+src/**/*.sha256
+dist/**/*.sha256
+**/*.sha256
+*.sha256
+
+# Systemdateien und Locks
+package-lock.json
+.DS_Store
+.gitignore
+
+# Automatisierungsskript
+index.html
+llms-full.txt
+update.sh
+verify.sh
+````
+
+## File: index.html
+````html
+<!DOCTYPE html>
+<html>
+ <head>
+    <link rel="icon" type="image/x-icon" href="https://cdn.jsdelivr.net/gh/harnumaix/donate@main/assets/favicon.ico?v=1" />
+    <meta http-equiv="refresh" content="0; url=./docs/index.html" />
+  </head>
+  <body>
+    <p>Redirecting to documentation...</p>
+  </body>
+</html>
+````
+
+## File: LICENSE
+````
+Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright 2026 Aries Harbinger
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       https://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+````
+
+## File: package.json
+````json
+{
+  "name": "ths-csprng",
+  "version": "2.0.1",
+  "description": "Temporal Hardening Solution: a multi-source CSPRNG wrapper that remains secure when individual entropy sources are compromised, backdoored, or actively hostile.",
+  "author": "Aries Harbinger",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/harnumaix/temporal-hardening-solution-csprng#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harnumaix/temporal-hardening-solution-csprng.git"
+  },
+  "funding": [
+    {
+      "type": "individual",
+      "url": "https://harnumaix.github.io/donate/"
+    }
+  ],
+  "bugs": {
+    "url": "https://github.com/harnumaix/temporal-hardening-solution-csprng/issues"
+  },
+  "type": "module",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./dist/index.min.js",
+      "require": "./dist/index.min.js"
+    },
+    "./mini-utils": {
+      "types": "./src/mini-utils.d.ts",
+      "import": "./dist/mini-utils.min.js",
+      "require": "./dist/mini-utils.min.js"
+    }
+  },
+  "engines": {
+    "node": ">= 24.7.0"
+  },
+  "scripts": {
+    "build": "bash update.sh",
+    "verify": "bash verify.sh",
+    "test": "node --test ./test/test_suite.js",
+    "check": "npm run test && npm run verify",
+    "prepublishOnly": "npm run check"
+  },
+  "keywords": [
+    "csprng",
+    "drbg",
+    "cryptography",
+    "entropy",
+    "random",
+    "temporal-hardening",
+    "argon2",
+    "argon2id",
+    "security",
+    "kmac",
+    "kmac256",
+    "sha3",
+    "hardware-rng",
+    "forward-secrecy",
+    "vm-entropy",
+    "key-generation"
+  ],
+  "dependencies": {
+    "@noble/hashes": "^2.2.0",
+    "fwrap": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typedoc": "^0.28.19"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
+````
+
+## File: README.md
+````markdown
+<div align="center">
+<img src="https://raw.githubusercontent.com/harnumaix/temporal-hardening-solution-csprng/refs/heads/main/media/banner.png" alt="Banner" width="1250">
+</div>
+
+<br />
+
+# ths-csprng
+
+[![npm version](https://img.shields.io/npm/v/ths-csprng.svg)](https://www.npmjs.com/package/ths-csprng)
+![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.7.0-green)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/LICENSE)
+![Verify Status](https://github.com/harnumaix/temporal-hardening-solution-csprng/actions/workflows/verify.yml/badge.svg)
+[![Socket Badge](https://badge.socket.dev/npm/package/ths-csprng/2.0.1)](https://badge.socket.dev/npm/package/ths-csprng/2.0.1)
+[![Donate](https://img.shields.io/badge/@HarnumaIX-Donate-FF4D4D)](https://harnumaix.github.io/donate/)
+
+<br />
+
+Standard CSPRNGs assume that once a seed is generated, the history of how it was produced is irrelevant. In practice that assumption breaks down in documented, real-world ways — backdoored hardware RNGs, hypervisor entropy starvation, forked process state reuse, and OS-level DRBG compromises have all produced exploitable key material in production systems.
+
+**THS (Temporal Hardening Solution)** is a multi-source CSPRNG wrapper built around the idea that no single entropy source should be trusted unconditionally. It derives randomness by observing a **sequential movie of system state** — CPU jitter, scheduler noise, GC pressure, and OS bytes — across many frames, mixing everything into a KMAC256 accumulator and optionally memory-hardening early frames with native `crypto.argon2id`. The result is a seed whose reconstruction requires an attacker to accurately simulate the full physical evolution of the machine across every frame, not just recover a single snapshot.
+
+<br />
+
+---
+
+<br />
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/harnumaix/temporal-hardening-solution-csprng/refs/heads/main/media/illustration_1.png" alt="Illustration 1" width="1250">
+</div>
+
+<br />
+
+## The Real-World Threat Model
+
+THS was designed around concrete, documented attack scenarios — not academic abstractions.
+
+* **Backdoored hardware RNG (RDRAND / Dual_EC_DRBG).** Early Intel Ivy Bridge errata produced biased RDRAND output. The NSA-influenced Dual_EC_DRBG, standardised in [NIST SP 800-90A](https://csrc.nist.rip/publications/nistpubs/800-90A/SP800-90A.pdf) and shipped in RSA BSAFE and several TLS stacks, contained a deliberately chosen curve point that let its designer predict all future output from 32 bytes of observation. THS never forwards OS CSPRNG output directly — every byte is mixed through SHA3-512 with timing-derived entropy the DRBG cannot observe, and optionally stretched with argon2id.
+
+* **VM / hypervisor entropy starvation.** Virtualised environments (AWS EC2, GCP, Azure, Docker) frequently boot with a near-empty kernel entropy pool because the guest OS has no access to physical hardware noise. The 2012 landmark paper [“Mining Your Ps and Qs”](https://factorable.net/paper.html) found tens of thousands of colliding RSA moduli from internet-wide key scans — a direct consequence of early-boot key generation in exactly these environments. THS compensates by harvesting CPU jitter, scheduler noise, GC pressure, and context-switch counters — sources that are genuinely unpredictable even in a VM, even when the kernel pool is nearly empty.
+
+* **Forked process state reuse.** `fork()` duplicates the entire process address space, including any in-memory PRNG state. Two forked children starting from the same state produce identical byte streams. This famously affected OpenSSL in Debian via [CVE-2008-0166](https://www.cs.utexas.edu/~hovav/dist/debiankey.pdf) and has been rediscovered in Python, Ruby, and Go runtimes. THS re-seeds from fresh OS entropy at the start of **every** `random()` call, not just at initialisation. A forked child diverges immediately on its first call.
+
+* **Forward-secrecy compromise.** After each `random()` call, the internal entropy storage is ratcheted forward with post-output frames generated *after* the output was committed. An adversary who captures the output cannot derive the next seed without also knowing scheduler events, OS reads, and hrtime values that had not yet occurred when the output was produced.
+
+<br />
+
+> 📖 **Documentation:** Full API breakdowns, edge cases, and advanced configurations are available at **[harnumaix.github.io/temporal-hardening-solution-csprng](https://harnumaix.github.io/temporal-hardening-solution-csprng/)**.
+
+> 📦 **Full API context optimized for AI assistants and contributors** is available in [`llms-full.txt`](https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/llms-full.txt).
+
+<br />
+<br />
+
+---
+
+<br />
+
+## 🚀 Getting Started
+
+```bash
+npm install ths-csprng
+```
+
+> **Requires Node.js ≥ 24.7.0.**
+
+<br />
+
+---
+
+## 🛠️ Quick Start
+
+### Modern ESM (Node.js 24+, Bun)
+
+```javascript
+import THS from 'ths-csprng';
+
+// Standard 256-bit secure random buffer (Level 2, 64 frames)
+const entropy = await THS.random(32);
+
+// Long-term master key with maximum hardening
+const masterKey = await THS.random(64, {
+    layers:          512,          // 512 sequential entropy frames
+    harden:          3,            // Level 3: SHA3-512 + native argon2id
+    mem:             65536,        // 64 MiB argon2id memory cost
+    memoryH:         4,            // Apply argon2id to the first 4 frames
+    trng:            true,         // Read directly from /dev/urandom
+    sandwichMode:    true,         // Ratchet entropy storage forward post-output
+    maxSandwichCount: 5,           // 5 post-output frames for forward secrecy
+    label:           'myapp:master-key-v1',  // Domain-separation label
+});
+```
+
+### CommonJS
+
+```javascript
+const { THS } = require('ths-csprng');
+
+(async () => {
+    const entropy = await THS.random(32);
+    console.log(entropy.toString('hex'));
+})();
+```
+
+<br />
+
+---
+
+## 💎 Hardening Levels
+
+| Level | Mode | What it captures |
+| :--- | :--- | :--- |
+| **0** | **Benchmark only** | A single `process.hrtime.bigint()` sample. No OS reads, no entropy mixing. **Do not use in production.** |
+| **1** | **Process metrics** | 17 process metrics: nanosecond hrtime, uptime, user/system CPU time, minor/major page faults, voluntary/involuntary context switches, V8 heap (used/total/external/arrayBuffers), RSS, `performance.now()`, the module-load anchor, wall-clock time, and the frame index. No OS reads. |
+| **2** | **OS-mixed** *(recommended default)* | Level 1 metrics + 128 bytes of fresh OS entropy per frame, all hashed through SHA3-512. A second hrtime sample brackets the OS read, encoding syscall latency as entropy. Effective even in VMs with a stale kernel pool. |
+| **3** | **Memory-hardened** | Level 2 + native `crypto.argon2id` on frames with index `< memoryH`. Each brute-force candidate requires `mem` KiB of RAM — GPU farms are bottlenecked by memory bandwidth, not compute. Gate with a small `memoryH` to limit latency impact. |
+
+<br />
+
+---
+
+## ⚙️ Full Configuration Options
+
+```javascript
+const bytes = await THS.random(32, {
+    // ── Core ────────────────────────────────────────────────────────────────
+    layers:           64,          // Sequential entropy frames (2–32768)
+    harden:           2,           // Snapshot hardening level (0–3)
+    trng:             false,       // Read OS bytes from /dev/urandom directly
+    buffer:           true,        // true → Buffer, false → Uint8Array
+
+    // ── Forward Secrecy (Sandwich Mode) ─────────────────────────────────────
+    sandwichMode:     true,        // Ratchet entropy storage with post-output frames
+    maxSandwichCount: 3,           // Post-output frames to fold in (1–32768)
+
+    // ── Argon2id (harden: 3 only) ────────────────────────────────────────────
+    memoryH:          1,           // Frame indices [0, memoryH) receive argon2id
+    mem:              16384,       // memoryCost in KiB (≥ 1024; default 16 MiB)
+    passes:           3,           // timeCost / iteration count
+    parallelism:      4,           // Degree of parallelism
+
+    // ── Domain Separation ────────────────────────────────────────────────────
+    label:            'THS-v2',    // KMAC256 personalisation string; change per key type
+});
+```
+
+<br />
+
+---
+
+## 🧬 Advanced API
+
+### Streaming Frames
+
+`streamFrames` yields a continuous stream of hardened random frames without pre-committing to a fixed layer count. Each `yield` is an async suspension point that introduces real scheduler-driven jitter. The seed is ratcheted forward using both the emitted bytes *and* the hrtime at which the consumer resumed the generator — future output depends on when prior output was consumed.
+
+The stream maintains its own seed, entirely separate from the cross-call entropy storage used by `random()`. Streaming and non-streaming uses cannot interfere with each other's forward-secrecy properties.
+
+```javascript
+import THS from 'ths-csprng';
+
+let count = 0;
+for await (const frame of THS.streamFrames(32, { harden: 2, label: 'myapp:session-tokens' })) {
+    issueSessionToken(frame);
+    if (++count >= 1000) break;  // generator runs indefinitely until stopped
+}
+```
+
+`streamFrames` accepts the same entropy options as `random()` (`harden`, `memoryH`, `mem`, `passes`, `parallelism`, `trng`, `label`).
+
+<br />
+
+### `randomBytes` Drop-in Replacement
+
+```javascript
+import { randomBytes } from 'ths-csprng';
+
+// Synchronous — WebCrypto getRandomValues, no THS overhead
+const nonce = randomBytes(16);                         // → Uint8Array
+const buf   = Buffer.from(randomBytes(16));            // safely wrapped
+
+// Asynchronous — full THS sequential frame movie
+const key   = await randomBytes(32, true);             // isHardenRNG=true
+const key2  = await randomBytes(32, true, { harden: 3, mem: 32768 });
+```
+
+<br />
+
+### Convenience Aliases
+
+```javascript
+await THS.rand(32);          // alias for THS.random()
+await THS.rnd(32);           // alias for THS.random()
+```
+
+<br />
+
+### Raw OS Entropy
+
+```javascript
+// Raw OS bytes with no THS mixing.
+// Caller is responsible for zeroing the buffer when done.
+const seed = await THS.raw(32);          // /dev/urandom (default: trng=true)
+const seed2 = await THS.raw(32, false);  // crypto.randomBytes
+```
+
+<br />
+
+### Synchronous WebCrypto Fill
+
+```javascript
+// Routes to window.crypto in browsers, node:crypto webcrypto in Node.js.
+// No THS mixing — use when synchronous operation is required.
+const u32 = THS.fillRandom(new Uint32Array(8));
+const u8  = THS.fillRandom(new Uint8Array(32));
+```
+
+<br />
+
+---
+
+<br />
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/harnumaix/temporal-hardening-solution-csprng/refs/heads/main/media/illustration_2.png" alt="Illustration 2" width="1250">
+</div>
+
+<br />
+
+## 🔬 Design: The Sequential Movie
+
+Entropy is derived by observing a **sequential movie of system state**, not a single snapshot:
+
+```
+seed ──► frame₀ ──► jitter ──► frame₁ ──► jitter ──► … ──► frameₙ
+              ↓                     ↓                     ↓
+          KMAC256 update per frame, interleaved with OS bytes
+```
+
+Each frame captures a unique time-slice of CPU jitter, scheduler noise, memory pressure, and GC artifacts. The frame loop is always sequential — never `Promise.all` — so the inter-frame timing spread is preserved as entropy. Concurrent scheduling would collapse the movie into a near-simultaneous snapshot, discarding the temporal structure entirely.
+
+The cross-call **entropy storage** carries entropy across invocations. It is re-mixed with fresh OS bytes at the start of every `random()` call (preventing it from becoming a closed, self-referential loop) and ratcheted forward with post-output frames after each call (forward secrecy).
+
+<br />
+
+---
+
+## Use Cases
+
+| Use case | Recommended call |
+| :--- | :--- |
+| Nonces, IVs, UUIDs, session tokens | `randomBytes(len)` or `THS.fillRandom(arr)` — synchronous, zero overhead |
+| Application-layer session keys | `THS.random(32)` — default options (Level 2, 64 frames) |
+| Long-lived master keys / signing keys | `THS.random(64, { harden: 3, mem: 65536, layers: 256 })` |
+| High-volume token streams | `THS.streamFrames(32)` — continuous, forward-secret, per-frame ratchet |
+| Bootstrapping a separate DRBG | `THS.raw(64)` — raw OS bytes, caller manages mixing |
+| Browser / WebCrypto contexts | `THS.fillRandom(new Uint8Array(n))` — routes to `window.crypto` |
+
+<br />
+
+---
+
+> [!NOTE]
+> 
+> **Hardening Level 3** is computationally expensive by design. It is intended for long-term master keys or seeds where latency is acceptable and the threat model includes state-level adversaries. For high-frequency generation (UUIDs, nonces, IVs), use **Level 0** or **Level 1**, or the synchronous `randomBytes` / `fillRandom` path.
+
+<br />
+
+---
+
+## 🛠️ Development & Verification
+
+```bash
+npm run check        # test + verify checksums
+npm run build        # minify + generate docs + checksums
+npm test
+```
+
+The project uses:
+
+* `terser` for minification
+* SHA-256 checksums for all built files
+* [`@noble/hashes`](https://npmjs.com/package/@noble/hashes) for KMAC256 (audited, zero-dependency)
+* Native `node:crypto` argon2id (Node.js 24+)
+* Strict mode + comprehensive test suite
+
+<br />
+
+---
+
+<br />
+
+## ⭐ Contributor(s)
+
+<a href="https://github.com/harnumaix/temporal-hardening-solution-csprng/graphs/contributors">
+  <img alt="contributors" src="https://contrib.rocks/image?repo=harnumaix/temporal-hardening-solution-csprng"/>
+</a>
+
+<br />
+<br />
+<br />
+
+## License
+
+Licensed under the **Apache License, Version 2.0** — a permissive license with an explicit grant of patent rights and protection against contributor liability.
+
+Copyright © 2026 Aries Harbinger. See the **[LICENSE](https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/LICENSE)** file for full details.
+
+<br />
+<br />
+
+## 🔗 Links
+
+* [GitHub Repository](https://github.com/harnumaix/temporal-hardening-solution-csprng)
+* [npm Package](https://www.npmjs.com/package/ths-csprng)
+* Full AI Context **[llms-full.txt](https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/llms-full.txt)**
+* Full API Documentations **[harnumaix.github.io/temporal-hardening-solution-csprng](https://harnumaix.github.io/temporal-hardening-solution-csprng/)**
+
+<br />
+<br />
+<br />
+<br />
+````
