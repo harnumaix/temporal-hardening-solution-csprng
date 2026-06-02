@@ -10,7 +10,6 @@
 ![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.7.0-green)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/LICENSE)
 ![Verify Status](https://github.com/harnumaix/temporal-hardening-solution-csprng/actions/workflows/verify.yml/badge.svg)
-[![Socket Badge](https://badge.socket.dev/npm/package/ths-csprng/2.0.1)](https://badge.socket.dev/npm/package/ths-csprng/2.0.1)
 [![Donate](https://img.shields.io/badge/@HarnumaIX-Donate-FF4D4D)](https://harnumaix.github.io/donate/)
 
 <br />

@@ -1,6 +1,6 @@
 {
   "name": "ths-csprng",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Temporal Hardening Solution: a multi-source CSPRNG wrapper that remains secure when individual entropy sources are compromised, backdoored, or actively hostile.",
   "author": "Aries Harbinger",
   "license": "Apache-2.0",
@@ -61,8 +61,7 @@
     "key-generation"
   ],
   "dependencies": {
-    "@noble/hashes": "^2.2.0",
-    "fwrap": "^1.0.0"
+    "@noble/hashes": "^2.2.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

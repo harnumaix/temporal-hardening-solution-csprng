@@ -21,8 +21,35 @@
  * @author Aries Harbinger
  * @license Apache-2.0
  */
-import { fwrapCustom } from 'fwrap';
 import { types } from 'node:util';
+
+
+/**
+ * Sets a custom `name` on a function and optionally re-assigns it to an object property in-place.
+ * @param {Function} fn - The function to rename.
+ * @param {Object|null} [obj=null] - Optional parent object for in-place mutation.
+ * @param {string|symbol|null} [key=null] - Property key on `obj` to reassign.
+ * @param {Object} [opts={}] - Descriptor overrides for the `name` property.
+ * @param {string} [opts.value=''] - The custom name to assign.
+ * @param {boolean} [opts.configurable=true] - Whether the `name` property can be redefined later.
+ * @param {boolean} [opts.writable=false] - Whether the `name` property can be assigned directly.
+ * @param {boolean} [opts.enumerable=false] - Whether `name` appears in enumeration.
+ * @returns {Function|void} The renamed function when called standalone; `undefined` when mutating in-place.
+ * @private
+ */
+const fwrapCustom = (fn, obj = null, key = null, { value = '', configurable = true, writable = false, enumerable = false } = {}) => {
+    try {
+        const r = Object.defineProperty(fn, 'name', { value, configurable, writable, enumerable });
+
+        // Standalone — caller receives the renamed function
+        if (obj === null && key === null)
+            return r;
+
+        // In-place — mutate the parent object directly
+        obj[key] = r;
+
+    } catch (e) { return fn; }
+};
 
 
 /**
@@ -347,7 +374,7 @@ wrapTrySync(() => {
     hardenFn(PrivateContainer);
 
     // Freeze the structures
-    for (const structure of [isFunction, hardenFn, zeroBuf, wrapTry, wrapTrySync, PrivateContainer.prototype, PrivateContainer]) {
+    for (const structure of [fwrapCustom, isFunction, hardenFn, zeroBuf, wrapTry, wrapTrySync, PrivateContainer.prototype, PrivateContainer]) {
         structure && Object.freeze(structure);
     }
 

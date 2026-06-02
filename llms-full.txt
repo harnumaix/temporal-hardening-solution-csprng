@@ -364,7 +364,6 @@ import {
     webcrypto,
 } from 'node:crypto';
 
-import { fwrapObj } from 'fwrap';
 import { PrivateContainer, hardenFn, zeroBuf, wrapTry, wrapTrySync } from 'ths-csprng/mini-utils';
 import { kmac256 } from '@noble/hashes/sha3-addons.js';
 
@@ -419,6 +418,7 @@ const argon2HashAsync = new PrivateContainer(() => promisify(nativeArgon2)).free
  * @internal
  */
 const entropyStorage = new PrivateContainer(() => nodeRandomBytes(64));
+
 
 /**
  * High-resolution timestamp captured exactly once when this module is first
@@ -1537,8 +1537,35 @@ export const wrapTrySync: Function;
  * @author Aries Harbinger
  * @license Apache-2.0
  */
-import { fwrapCustom } from 'fwrap';
 import { types } from 'node:util';
+
+
+/**
+ * Sets a custom `name` on a function and optionally re-assigns it to an object property in-place.
+ * @param {Function} fn - The function to rename.
+ * @param {Object|null} [obj=null] - Optional parent object for in-place mutation.
+ * @param {string|symbol|null} [key=null] - Property key on `obj` to reassign.
+ * @param {Object} [opts={}] - Descriptor overrides for the `name` property.
+ * @param {string} [opts.value=''] - The custom name to assign.
+ * @param {boolean} [opts.configurable=true] - Whether the `name` property can be redefined later.
+ * @param {boolean} [opts.writable=false] - Whether the `name` property can be assigned directly.
+ * @param {boolean} [opts.enumerable=false] - Whether `name` appears in enumeration.
+ * @returns {Function|void} The renamed function when called standalone; `undefined` when mutating in-place.
+ * @private
+ */
+const fwrapCustom = (fn, obj = null, key = null, { value = '', configurable = true, writable = false, enumerable = false } = {}) => {
+    try {
+        const r = Object.defineProperty(fn, 'name', { value, configurable, writable, enumerable });
+
+        // Standalone — caller receives the renamed function
+        if (obj === null && key === null)
+            return r;
+
+        // In-place — mutate the parent object directly
+        obj[key] = r;
+
+    } catch (e) { return fn; }
+};
 
 
 /**
@@ -1863,7 +1890,7 @@ wrapTrySync(() => {
     hardenFn(PrivateContainer);
 
     // Freeze the structures
-    for (const structure of [isFunction, hardenFn, zeroBuf, wrapTry, wrapTrySync, PrivateContainer.prototype, PrivateContainer]) {
+    for (const structure of [fwrapCustom, isFunction, hardenFn, zeroBuf, wrapTry, wrapTrySync, PrivateContainer.prototype, PrivateContainer]) {
         structure && Object.freeze(structure);
     }
 
@@ -2707,7 +2734,7 @@ Apache License
 ````json
 {
   "name": "ths-csprng",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Temporal Hardening Solution: a multi-source CSPRNG wrapper that remains secure when individual entropy sources are compromised, backdoored, or actively hostile.",
   "author": "Aries Harbinger",
   "license": "Apache-2.0",
@@ -2768,8 +2795,7 @@ Apache License
     "key-generation"
   ],
   "dependencies": {
-    "@noble/hashes": "^2.2.0",
-    "fwrap": "^1.0.0"
+    "@noble/hashes": "^2.2.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
@@ -2795,7 +2821,6 @@ Apache License
 ![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.7.0-green)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/harnumaix/temporal-hardening-solution-csprng/blob/main/LICENSE)
 ![Verify Status](https://github.com/harnumaix/temporal-hardening-solution-csprng/actions/workflows/verify.yml/badge.svg)
-[![Socket Badge](https://badge.socket.dev/npm/package/ths-csprng/2.0.1)](https://badge.socket.dev/npm/package/ths-csprng/2.0.1)
 [![Donate](https://img.shields.io/badge/@HarnumaIX-Donate-FF4D4D)](https://harnumaix.github.io/donate/)
 
 <br />

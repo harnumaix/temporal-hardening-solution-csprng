@@ -58,7 +58,8 @@ minify() {
     echo "  > Minifying $1..."
     npx terser "src/$1.js" -o "dist/$1.min.js" \
         --compress --mangle \
-        --source-map "url='$1.min.js.map',filename='dist/$1.min.js.map'"
+        --source-map "url='$1.min.js.map',filename='dist/$1.min.js.map'" \
+        --format max_line_len=500
 }
 
 # Hauptmodule verarbeiten

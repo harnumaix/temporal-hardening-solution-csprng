@@ -100,7 +100,6 @@ import {
     webcrypto,
 } from 'node:crypto';
 
-import { fwrapObj } from 'fwrap';
 import { PrivateContainer, hardenFn, zeroBuf, wrapTry, wrapTrySync } from 'ths-csprng/mini-utils';
 import { kmac256 } from '@noble/hashes/sha3-addons.js';
 
@@ -155,6 +154,7 @@ const argon2HashAsync = new PrivateContainer(() => promisify(nativeArgon2)).free
  * @internal
  */
 const entropyStorage = new PrivateContainer(() => nodeRandomBytes(64));
+
 
 /**
  * High-resolution timestamp captured exactly once when this module is first
