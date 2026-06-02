@@ -25,8 +25,7 @@ echo "Generating Documentation..."
 # rm -rf docs 2>/dev/null
 node ./node_modules/typedoc/bin/typedoc \
     --entryPointStrategy expand \
-    --entryPoints "src/index.d.ts" \
-    --entryPoints "src/mini-utils.d.ts" \
+    --entryPoints "src/**/*.d.ts" \
     --out docs \
     --readme README.md \
     --name "ths-csprng" \
